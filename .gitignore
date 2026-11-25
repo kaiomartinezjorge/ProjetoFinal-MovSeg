@@ -1,0 +1,43 @@
+.tmp-review/
+.env
+*.log
+
+# Java / Gradle (Backend)
+backend/.gradle/
+backend/build/
+backend/storage/
+backend/out/
+
+# Node / Next.js (Web)
+web/node_modules/
+web/.next/
+web/out/
+web/.env*.local
+
+# Flutter / Dart (Mobile)
+mobile/.dart_tool/
+mobile/.packages
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+.env
+*.log
+
+# Java / Gradle (Backend)
+backend/.gradle/
+backend/build/
+backend/storage/
+backend/out/
+
+# Node / Next.js (Web)
+web/node_modules/
+web/.next/
+web/out/
+web/.env*.local
+
+# Flutter / Dart (Mobile)
+mobile/.dart_tool/
+mobile/.packages
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
