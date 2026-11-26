@@ -31,17 +31,19 @@ class _HomeShellState extends State<HomeShell> {
     super.dispose();
   }
 
-  Future<void> _buscar() async {
+  Future<void> _buscar({bool listarTodos = false}) async {
     final termo = _busca.text.trim();
-    if (termo.isEmpty || _ocupado) return;
+    if ((!listarTodos && termo.isEmpty) || _ocupado) return;
     FocusScope.of(context).unfocus();
     setState(() {
+      if (listarTodos) _busca.clear();
       _resultados = null;
       _erro = null;
       _ocupado = true;
     });
     try {
-      final unidades = await widget.api.listarUnidades(busca: termo);
+      final unidades =
+          await widget.api.listarUnidades(busca: listarTodos ? null : termo);
       if (mounted) setState(() => _resultados = unidades);
     } catch (erro) {
       if (mounted) setState(() => _erro = _mensagem(erro));
@@ -131,7 +133,7 @@ class _HomeShellState extends State<HomeShell> {
               onDestinationSelected: (indice) => setState(() => _aba = indice),
               destinations: const [
                 NavigationDestination(
-                    icon: Icon(Icons.add_a_photo_outlined), label: 'Coleta'),
+                    icon: Icon(Icons.add_a_photo_outlined), label: 'Registrar'),
                 NavigationDestination(
                     icon: Icon(Icons.timeline_rounded), label: 'Histórico'),
                 NavigationDestination(
@@ -148,12 +150,11 @@ class _HomeShellState extends State<HomeShell> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        Text('Selecionar unidade',
+        Text('Qual móvel você vai registrar?',
             style: tema.textTheme.headlineMedium
                 ?.copyWith(fontWeight: FontWeight.w800)),
         const SizedBox(height: 8),
-        const Text(
-            'Encontre o móvel e confira a etiqueta antes de registrar a etapa.'),
+        const Text('Use o código impresso na etiqueta ou o número do pedido.'),
         const SizedBox(height: 20),
         TextField(
           controller: _busca,
@@ -169,10 +170,16 @@ class _HomeShellState extends State<HomeShell> {
         ),
         const SizedBox(height: 12),
         FilledButton.icon(
-          onPressed: _ocupado || _busca.text.trim().isEmpty ? null : _buscar,
+          onPressed:
+              _ocupado || _busca.text.trim().isEmpty ? null : () => _buscar(),
           icon: const Icon(Icons.search_rounded),
-          label: const Text('Buscar unidades'),
+          label: const Text('Buscar móvel'),
         ),
+        if (!_ocupado && (resultados == null || resultados.isEmpty))
+          TextButton(
+            onPressed: () => _buscar(listarTodos: true),
+            child: const Text('Ver móveis cadastrados'),
+          ),
         if (_ocupado) ...[
           const SizedBox(height: 18),
           const LinearProgressIndicator(semanticsLabel: 'Buscando unidade'),
@@ -189,6 +196,12 @@ class _HomeShellState extends State<HomeShell> {
             padding: EdgeInsets.only(top: 18),
             child: Text(
                 'Nenhuma unidade encontrada. Confira o código e tente novamente.'),
+          ),
+        if (resultados != null && resultados.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text('Toque no móvel para continuar',
+                style: tema.textTheme.titleSmall),
           ),
         for (final unidade in resultados ?? const <UnidadeResumo>[])
           Card(
@@ -248,7 +261,7 @@ class _HomeShellState extends State<HomeShell> {
                   key: ValueKey('${unidade.id}-${timeline.marcos.length}'),
                   api: widget.api,
                   timeline: timeline,
-                  onRegistrado: () => _abrir(unidade.id, aba: 1),
+                  onRegistrado: () => _abrir(unidade.id),
                 ),
                 MarcosTimelineScreen(
                   timeline: timeline,

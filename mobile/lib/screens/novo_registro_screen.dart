@@ -362,265 +362,273 @@ class _NovoRegistroScreenState extends State<NovoRegistroScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final unidade = widget.timeline.unidade;
     final etapa = _etapa;
-    final podeRegistrar =
-        etapa != null && etapa.permite(widget.api.usuario?.perfil);
     final tema = Theme.of(context);
+    final cabecalho = _PainelRegistro(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(etapa == null ? 'Coleta concluída' : 'Próxima etapa',
+              style: tema.textTheme.labelLarge),
+          if (etapa != null)
+            Text(etapa.titulo,
+                style: tema.textTheme.headlineSmall
+                    ?.copyWith(fontWeight: FontWeight.w800)),
+          const SizedBox(height: 6),
+          Text(etapa == null
+              ? 'Todos os registros estão disponíveis no histórico.'
+              : etapa.permite(widget.api.usuario?.perfil)
+                  ? _orientacao(etapa)
+                  : 'Esta etapa deve ser registrada por ${_responsavel(etapa)}.'),
+        ],
+      ),
+    );
+    if (etapa == null || !etapa.permite(widget.api.usuario?.perfil)) {
+      return ListView(padding: const EdgeInsets.all(16), children: [cabecalho]);
+    }
+
     final podeCapturar = !_ocupado && _evidencias.length < _limiteArquivos;
-    final itens = etapa == null ? const <String, String>{} : _itens(etapa);
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+    final String? pendencia;
+    if (_evidencias.isEmpty) {
+      pendencia = 'Adicione uma foto ou um vídeo para enviar.';
+    } else if (_houveAvaria == null) {
+      pendencia = 'Informe a condição do móvel para enviar.';
+    } else if (_houveAvaria == true &&
+        (_tipoAvariaCtrl.text.trim().isEmpty || _obsCtrl.text.trim().isEmpty)) {
+      pendencia = 'Preencha o tipo e a descrição da avaria.';
+    } else {
+      pendencia = null;
+    }
+
+    return Column(
       children: [
-        Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 620),
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 16),
+            children: [
+              cabecalho,
+              const SizedBox(height: 10),
+              _PainelRegistro(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Evidência', style: tema.textTheme.titleMedium),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        FilledButton.icon(
+                          onPressed: podeCapturar
+                              ? () => _capturarMidia(ImageSource.camera,
+                                  video: false)
+                              : null,
+                          icon: const Icon(Icons.photo_camera_outlined),
+                          label: Text(_evidencias.isEmpty
+                              ? 'Tirar foto'
+                              : 'Tirar outra foto'),
+                        ),
+                        PopupMenuButton<(ImageSource, bool)>(
+                          enabled: podeCapturar,
+                          tooltip: 'Outras opções de captura',
+                          onSelected: (opcao) =>
+                              _capturarMidia(opcao.$1, video: opcao.$2),
+                          itemBuilder: (_) => const [
+                            PopupMenuItem(
+                                value: (ImageSource.gallery, false),
+                                child: Text('Escolher foto')),
+                            PopupMenuItem(
+                                value: (ImageSource.camera, true),
+                                child: Text('Gravar vídeo')),
+                            PopupMenuItem(
+                                value: (ImageSource.gallery, true),
+                                child: Text('Escolher vídeo')),
+                          ],
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(
+                                vertical: 11, horizontal: 6),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text('Mais opções'),
+                                Icon(Icons.arrow_drop_down),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (_capturando) const LinearProgressIndicator(),
+                    for (final (indice, evidencia) in _evidencias.indexed)
+                      ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        leading: SizedBox.square(
+                          dimension: 42,
+                          child: evidencia.isVideo
+                              ? const Icon(Icons.videocam_outlined)
+                              : ClipRRect(
+                                  borderRadius: BorderRadius.circular(6),
+                                  child: Image.memory(
+                                    evidencia.bytes,
+                                    fit: BoxFit.cover,
+                                    cacheWidth: 128,
+                                    errorBuilder: (_, __, ___) =>
+                                        const Icon(Icons.image_outlined),
+                                  ),
+                                ),
+                        ),
+                        title: Text(evidencia.filename,
+                            maxLines: 1, overflow: TextOverflow.ellipsis),
+                        trailing: IconButton(
+                          tooltip: 'Remover arquivo',
+                          onPressed: _ocupado
+                              ? null
+                              : () =>
+                                  setState(() => _evidencias.removeAt(indice)),
+                          icon: const Icon(Icons.close),
+                        ),
+                      ),
+                    if (_evidencias.length >= _limiteArquivos)
+                      const Text('Limite de arquivos atingido.'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              _PainelRegistro(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Como está o móvel?',
+                        style: tema.textTheme.titleMedium),
+                    const SizedBox(height: 6),
+                    _EscolhaBinaria(
+                      valor: _houveAvaria,
+                      positivo: 'Com avaria',
+                      negativo: 'Sem avaria',
+                      onChanged: _ocupado
+                          ? null
+                          : (valor) => setState(() => _houveAvaria = valor),
+                    ),
+                    if (_houveAvaria == true) ...[
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _tipoAvariaCtrl,
+                        enabled: !_ocupado,
+                        maxLength: 80,
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(
+                            labelText: 'Tipo de avaria',
+                            hintText: 'Ex. quina amassada'),
+                      ),
+                      TextField(
+                        controller: _obsCtrl,
+                        enabled: !_ocupado,
+                        minLines: 2,
+                        maxLines: 4,
+                        onChanged: (_) => setState(() {}),
+                        decoration: const InputDecoration(
+                            labelText: 'Descrição da avaria'),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
+              _detalhes(etapa),
+            ],
+          ),
+        ),
+        Material(
+          color: tema.colorScheme.surface,
+          elevation: 2,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _PainelRegistro(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('Pedido ${unidade.ordemProducao}',
-                          style: tema.textTheme.labelLarge),
-                      const SizedBox(height: 5),
-                      Text(etapa?.titulo ?? 'Coleta concluída',
-                          style: tema.textTheme.headlineSmall
-                              ?.copyWith(fontWeight: FontWeight.w800)),
-                      const SizedBox(height: 5),
-                      Text(unidade.produto.nome),
-                      Text('QR ${unidade.codigoQr}',
-                          style: tema.textTheme.bodySmall),
-                      const SizedBox(height: 12),
-                      if (etapa == null)
-                        const Text(
-                            'Todos os pontos de coleta estão registrados. Consulte o histórico do pedido.')
-                      else if (!podeRegistrar)
-                        Text(
-                            'A próxima etapa precisa ser registrada por ${_responsavel(etapa)}. Acompanhe o histórico e retorne após esse registro.')
-                      else
-                        Text(_orientacao(etapa)),
-                    ],
-                  ),
+                if (_erro != null)
+                  Text(_erro!, style: TextStyle(color: tema.colorScheme.error))
+                else if (pendencia != null)
+                  Text(pendencia, style: tema.textTheme.bodySmall),
+                const SizedBox(height: 4),
+                FilledButton.icon(
+                  onPressed: _ocupado || pendencia != null
+                      ? null
+                      : () {
+                          FocusScope.of(context).unfocus();
+                          _enviarMarco(etapa);
+                        },
+                  icon: _enviando
+                      ? const SizedBox.square(
+                          dimension: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.cloud_upload_outlined),
+                  label: Text(_enviando ? 'Enviando…' : 'Enviar registro'),
                 ),
-                if (etapa != null && podeRegistrar) ...[
-                  const SizedBox(height: 10),
-                  _PainelRegistro(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Fotos e vídeos',
-                            style: tema.textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 5),
-                        Text(
-                            '${_evidencias.length}/$_limiteArquivos arquivos · mínimo 1 · até 100 MB'),
-                        const SizedBox(height: 12),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            FilledButton.icon(
-                              onPressed: podeCapturar
-                                  ? () => _capturarMidia(ImageSource.camera,
-                                      video: false)
-                                  : null,
-                              icon: const Icon(Icons.photo_camera_outlined),
-                              label: const Text('Tirar foto'),
-                            ),
-                            OutlinedButton.icon(
-                              onPressed: podeCapturar
-                                  ? () => _capturarMidia(ImageSource.camera,
-                                      video: true)
-                                  : null,
-                              icon: const Icon(Icons.videocam_outlined),
-                              label: const Text('Gravar vídeo'),
-                            ),
-                            OutlinedButton.icon(
-                              onPressed: podeCapturar
-                                  ? () => _capturarMidia(ImageSource.gallery,
-                                      video: false)
-                                  : null,
-                              icon: const Icon(Icons.photo_library_outlined),
-                              label: const Text('Escolher foto'),
-                            ),
-                            OutlinedButton.icon(
-                              onPressed: podeCapturar
-                                  ? () => _capturarMidia(ImageSource.gallery,
-                                      video: true)
-                                  : null,
-                              icon: const Icon(Icons.video_library_outlined),
-                              label: const Text('Escolher vídeo'),
-                            ),
-                          ],
-                        ),
-                        if (_capturando) ...[
-                          const SizedBox(height: 12),
-                          const LinearProgressIndicator(),
-                        ],
-                        for (final (indice, evidencia) in _evidencias.indexed)
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            leading: SizedBox.square(
-                              dimension: 42,
-                              child: evidencia.isVideo
-                                  ? const Icon(Icons.videocam_outlined)
-                                  : ClipRRect(
-                                      borderRadius: BorderRadius.circular(6),
-                                      child: Image.memory(
-                                        evidencia.bytes,
-                                        fit: BoxFit.cover,
-                                        cacheWidth: 128,
-                                        errorBuilder: (_, __, ___) =>
-                                            const Icon(Icons.image_outlined),
-                                      ),
-                                    ),
-                            ),
-                            title: Text(evidencia.filename,
-                                maxLines: 1, overflow: TextOverflow.ellipsis),
-                            subtitle: Text(
-                                '${(evidencia.bytes.length / 1024).toStringAsFixed(0)} KB'),
-                            trailing: IconButton(
-                              tooltip: 'Remover arquivo',
-                              onPressed: _ocupado
-                                  ? null
-                                  : () => setState(
-                                      () => _evidencias.removeAt(indice)),
-                              icon: const Icon(Icons.close),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _PainelRegistro(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Condição do móvel',
-                            style: tema.textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 8),
-                        _EscolhaBinaria(
-                          valor: _houveAvaria,
-                          positivo: 'Com avaria',
-                          negativo: 'Sem avaria',
-                          onChanged: _ocupado
-                              ? null
-                              : (valor) => setState(() => _houveAvaria = valor),
-                        ),
-                        if (_houveAvaria == true) ...[
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: _tipoAvariaCtrl,
-                            enabled: !_ocupado,
-                            maxLength: 80,
-                            decoration: const InputDecoration(
-                                labelText: 'Tipo de avaria',
-                                hintText: 'Ex.: quina amassada'),
-                          ),
-                        ],
-                        const SizedBox(height: 12),
-                        TextField(
-                          controller: _obsCtrl,
-                          enabled: !_ocupado,
-                          minLines: 2,
-                          maxLines: 4,
-                          decoration: InputDecoration(
-                              labelText: _houveAvaria == true
-                                  ? 'Descrição da avaria'
-                                  : 'Observações (opcional)'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _PainelRegistro(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Checklist da etapa',
-                            style: tema.textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 5),
-                        const Text('Responda os itens que você conferiu.'),
-                        for (final item in itens.entries) ...[
-                          const SizedBox(height: 12),
-                          Text(item.value),
-                          const SizedBox(height: 4),
-                          _EscolhaBinaria(
-                            valor: _checklist[item.key],
-                            positivo: 'Conforme',
-                            negativo: 'Divergente',
-                            onChanged: _ocupado
-                                ? null
-                                : (valor) => setState(
-                                    () => _checklist[item.key] = valor),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  _PainelRegistro(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Local da vistoria',
-                            style: tema.textTheme.titleMedium
-                                ?.copyWith(fontWeight: FontWeight.w700)),
-                        const SizedBox(height: 10),
-                        TextField(
-                          controller: _localCtrl,
-                          enabled: !_ocupado,
-                          maxLength: 200,
-                          decoration: const InputDecoration(
-                              labelText: 'Descreva o local (opcional)'),
-                        ),
-                        if (etapa.emCampo) ...[
-                          OutlinedButton.icon(
-                            onPressed: _ocupado ? null : _capturarGps,
-                            icon: const Icon(Icons.my_location),
-                            label: Text(_localizando
-                                ? 'Localizando…'
-                                : (_posicao == null
-                                    ? 'Adicionar localização GPS'
-                                    : 'Atualizar localização GPS')),
-                          ),
-                          if (_posicao != null)
-                            Text(
-                                'Localização capturada (± ${_posicao!.accuracy.round()} m).'),
-                          if (_erroGps != null)
-                            Text(_erroGps!,
-                                style:
-                                    TextStyle(color: tema.colorScheme.error)),
-                        ],
-                      ],
-                    ),
-                  ),
-                  if (_erro != null) ...[
-                    const SizedBox(height: 12),
-                    Text(_erro!,
-                        style: TextStyle(color: tema.colorScheme.error)),
-                  ],
-                  const SizedBox(height: 12),
-                  FilledButton.icon(
-                    onPressed: _ocupado ? null : () => _enviarMarco(etapa),
-                    icon: _enviando
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : const Icon(Icons.cloud_upload_outlined),
-                    label: Text(
-                        _enviando ? 'Enviando evidências…' : 'Registrar etapa'),
-                  ),
-                ],
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _detalhes(EtapaColeta etapa) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: ExpansionTile(
+        title: const Text('Detalhes da vistoria'),
+        subtitle: const Text('Checklist, observações e local'),
+        maintainState: true,
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          for (final item in _itens(etapa).entries) ...[
+            Text(item.value),
+            _EscolhaBinaria(
+              valor: _checklist[item.key],
+              positivo: 'Conforme',
+              negativo: 'Divergente',
+              onChanged: _ocupado
+                  ? null
+                  : (valor) => setState(() => _checklist[item.key] = valor),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (_houveAvaria != true) ...[
+            TextField(
+              controller: _obsCtrl,
+              enabled: !_ocupado,
+              maxLines: 3,
+              decoration: const InputDecoration(labelText: 'Observações'),
+            ),
+            const SizedBox(height: 10),
+          ],
+          TextField(
+            controller: _localCtrl,
+            enabled: !_ocupado,
+            maxLength: 200,
+            decoration: const InputDecoration(labelText: 'Local da vistoria'),
+          ),
+          if (etapa.emCampo) ...[
+            OutlinedButton.icon(
+              onPressed: _ocupado ? null : _capturarGps,
+              icon: const Icon(Icons.my_location),
+              label: Text(_localizando
+                  ? 'Localizando…'
+                  : _posicao == null
+                      ? 'Usar minha localização'
+                      : 'Atualizar localização'),
+            ),
+            if (_posicao != null)
+              Text(
+                  'Localização capturada (± ${_posicao!.accuracy.round()} m).'),
+            if (_erroGps != null)
+              Text(_erroGps!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          ],
+        ],
+      ),
     );
   }
 }

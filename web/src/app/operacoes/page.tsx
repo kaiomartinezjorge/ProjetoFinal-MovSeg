@@ -29,6 +29,12 @@ function valor(form: FormData, chave: string) {
   return String(form.get(chave) ?? "").trim();
 }
 
+function gerarSku() {
+  const numeros = crypto.getRandomValues(new Uint32Array(3));
+  const codigo = Array.from(numeros, (numero) => numero.toString(16).padStart(8, "0")).join("");
+  return `MOV-${codigo.toUpperCase()}`;
+}
+
 function erroMensagem(erro: unknown) {
   return erro instanceof Error ? erro.message : "Não foi possível concluir a operação.";
 }
@@ -40,6 +46,8 @@ function Operacoes() {
   const etapasPermitidas = perfil ? etapasPorPerfil[perfil] : undefined;
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [unidades, setUnidades] = useState<UnidadeResumo[]>([]);
+  const [aba, setAba] = useState<Formulario>(podeProduto ? "produto" : podeUnidade ? "unidade" : "marco");
+  const [produtoDaUnidade, setProdutoDaUnidade] = useState("");
   const [id, setId] = useState("");
   const [etiqueta, setEtiqueta] = useState<UnidadeResumo | null>(null);
   const [ocupado, setOcupado] = useState<Formulario | null>(null);
@@ -81,13 +89,16 @@ function Operacoes() {
       switch (tipo) {
         case "produto": {
           const produto = await api.criarProduto({
-            sku: valor(dados, "sku"),
+            sku: valor(dados, "sku") || gerarSku(),
             nome: valor(dados, "nome"),
-            linhaProducao: valor(dados, "linha"),
+            linhaProducao: valor(dados, "linha") || "Geral",
             especificacoesTecnicas: {},
             checklistPadrao: [{ codigo: "CHK-01", categoria: "Qualidade", item: "Acabamento superficial e medidas", criterio: "Conforme padrão técnico" }],
           });
-          setSucesso(`${produto.nome} foi cadastrado no catálogo.`);
+          setProdutos((lista) => [...lista, produto]);
+          setProdutoDaUnidade(produto.id);
+          setAba("unidade");
+          setSucesso(`${produto.nome} foi cadastrado. Vincule uma unidade ao pedido para gerar a etiqueta.`);
           break;
         }
         case "unidade": {
@@ -159,26 +170,42 @@ function Operacoes() {
           </div>
         </section>
       )}
-      <div className="no-print grid items-start gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+      <div className="no-print flex flex-wrap gap-2" role="group" aria-label="Ações de operações">
+        {([
+          ["produto", "Cadastrar produto", podeProduto],
+          ["unidade", "Gerar etiqueta", podeUnidade],
+          ["marco", "Registrar etapa", Boolean(etapasPermitidas)],
+        ] as const).map(([tipo, titulo, visivel]) => visivel && (
+          <button key={tipo} type="button" aria-pressed={aba === tipo} disabled={Boolean(ocupado)}
+            onClick={() => { setAba(tipo); setFalha(null); setSucesso(null); }}
+            className={`min-h-11 rounded-lg border px-4 text-sm font-semibold ${aba === tipo ? "border-brand-navy bg-brand-navy text-brand-cream" : "border-brand-line bg-white text-brand-steel hover:bg-brand-fog"}`}>
+            {titulo}
+          </button>
+        ))}
+      </div>
+      <div className="no-print max-w-2xl">
         {podeUnidade && (
-          <form className={`${painel} grid gap-3`} onSubmit={(event) => salvar(event, "unidade")}>
+          <form hidden={aba !== "unidade"} className={`${painel} ${aba === "unidade" ? "grid gap-3" : "hidden"}`} onSubmit={(event) => salvar(event, "unidade")}>
             <h2 className="font-headline mb-1 flex items-center gap-2 text-xl font-bold"><QrCode size={20} className="text-brand-steel" aria-hidden="true" /> Nova unidade</h2>
-            <label className={rotulo}>Produto<select name="produto" required defaultValue="" className={campo}><option value="" disabled>{carregando ? "Carregando produtos…" : "Selecione o produto"}</option>{produtos.map((produto) => <option key={produto.id} value={produto.id}>{produto.sku} · {produto.nome}</option>)}</select></label>
+            <label className={rotulo}>Produto<select name="produto" required value={produtoDaUnidade} onChange={(event) => setProdutoDaUnidade(event.target.value)} className={campo}><option value="" disabled>{carregando ? "Carregando produtos…" : "Selecione o produto"}</option>{produtos.map((produto) => <option key={produto.id} value={produto.id}>{produto.nome} · {produto.sku}</option>)}</select></label>
             <label className={rotulo}>Ordem de produção<input name="ordem" required maxLength={60} placeholder="Ex. OP-2026-1001" className={campo} /></label>
             <div className="grid gap-3 sm:grid-cols-2">
               <label className={rotulo}>Série<input name="serie" required maxLength={80} className={campo} /></label>
               <label className={rotulo}>Lote<input name="lote" required maxLength={60} className={campo} /></label>
             </div>
-            <label className={rotulo}>Transportadora<input name="transportadora" maxLength={120} className={campo} /></label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className={rotulo}>Cidade de destino<input name="destino" maxLength={120} className={campo} /></label>
-              <label className={rotulo}>Destinatário<input name="destinatario" maxLength={160} className={campo} /></label>
-            </div>
+            <details className="rounded-lg border border-brand-line p-3">
+              <summary className="cursor-pointer text-sm font-semibold">Dados da entrega (opcionais)</summary>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className={rotulo}>Transportadora<input name="transportadora" maxLength={120} className={campo} /></label>
+                <label className={rotulo}>Cidade de destino<input name="destino" maxLength={120} className={campo} /></label>
+                <label className={rotulo}>Destinatário<input name="destinatario" maxLength={160} className={campo} /></label>
+              </div>
+            </details>
             <button type="submit" disabled={Boolean(ocupado) || carregando || !produtos.length} className={botao}>{ocupado === "unidade" ? "Criando…" : "Cadastrar e gerar QR"}</button>
           </form>
         )}
         {etapasPermitidas && (
-          <form className={`${painel} grid gap-3`} onSubmit={(event) => salvar(event, "marco")}>
+          <form hidden={aba !== "marco"} className={`${painel} ${aba === "marco" ? "grid gap-3" : "hidden"}`} onSubmit={(event) => salvar(event, "marco")}>
             <h2 className="font-headline mb-1 flex items-center gap-2 text-xl font-bold"><ClipboardCheck size={20} className="text-brand-steel" aria-hidden="true" /> Registro fabril</h2>
             <label className={rotulo}>Unidade<select name="unidade" required value={id} onChange={(event) => setId(event.target.value)} className={campo}><option value="">{carregando ? "Carregando unidades…" : "Selecione série ou código QR"}</option>{candidatas.map((unidade) => <option key={unidade.id} value={unidade.id}>{unidade.codigoQr} · {unidade.ordemProducao}</option>)}</select></label>
             {etapa && <p className="rounded-lg bg-brand-tint px-3 py-2 text-sm font-semibold text-brand-navy">Etapa a registrar · {ETAPAS[etapa]}</p>}
@@ -191,11 +218,16 @@ function Operacoes() {
           </form>
         )}
         {podeProduto && (
-          <form className={`${painel} grid gap-3`} onSubmit={(event) => salvar(event, "produto")}>
+          <form hidden={aba !== "produto"} className={`${painel} ${aba === "produto" ? "grid gap-3" : "hidden"}`} onSubmit={(event) => salvar(event, "produto")}>
             <h2 className="font-headline mb-1 flex items-center gap-2 text-xl font-bold"><PackagePlus size={20} className="text-brand-steel" aria-hidden="true" /> Novo produto</h2>
-            <label className={rotulo}>SKU<input name="sku" required maxLength={60} className={campo} /></label>
-            <label className={rotulo}>Nome do móvel<input name="nome" required maxLength={160} className={campo} /></label>
-            <label className={rotulo}>Linha de produção<input name="linha" required maxLength={100} className={campo} /></label>
+            <label className={rotulo}>Nome do móvel<input name="nome" required maxLength={160} placeholder="Ex. Mesa de jantar" className={campo} /></label>
+            <details className="rounded-lg border border-brand-line p-3">
+              <summary className="cursor-pointer text-sm font-semibold">SKU e linha de produção (opcionais)</summary>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className={rotulo}>SKU<input name="sku" maxLength={60} placeholder="Gerado automaticamente" className={campo} /></label>
+                <label className={rotulo}>Linha de produção<input name="linha" maxLength={100} placeholder="Geral" className={campo} /></label>
+              </div>
+            </details>
             <button type="submit" disabled={Boolean(ocupado)} className={botao}>{ocupado === "produto" ? "Cadastrando…" : "Cadastrar produto"}</button>
             <Link href="/checklists" className="text-sm font-semibold text-brand-steel hover:underline">Editar checklists do catálogo</Link>
           </form>
