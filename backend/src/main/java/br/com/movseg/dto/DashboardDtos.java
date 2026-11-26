@@ -23,6 +23,8 @@ public final class DashboardDtos {
             List<ContagemItem> avariasPorLinhaProduto,
             List<ContagemItem> unidadesPorTransportadora,
             List<ContagemItem> avariasPorTipo,
+            List<ContagemItem> avariasPorCliente,
+            List<ContagemItem> avariasPorTransportadora,
             List<Map<String, Object>> ultimosEventosAuditoria
     ) {}
 }

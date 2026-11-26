@@ -47,18 +47,20 @@ public class OcorrenciaAvariaService {
 
     @Transactional
     public OcorrenciaDtos.OcorrenciaResponse criar(OcorrenciaDtos.CriarOcorrenciaRequest req) {
-        UnidadeMovel u = unidadeRepository.findById(req.unidadeMovelId())
+        UnidadeMovel u = unidadeRepository.buscarParaAtualizacao(req.unidadeMovelId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Unidade não encontrada."));
         MarcoRastreabilidade m = marcoRepository.findById(req.marcoDeteccaoId())
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Marco de detecção não encontrado."));
+        if (!m.getUnidadeMovel().getId().equals(u.getId())) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "O marco de detecção pertence a outro móvel.");
+        }
 
         OcorrenciaAvaria oc = new OcorrenciaAvaria();
         oc.setUnidadeMovel(u);
         oc.setMarcoDeteccao(m);
         oc.setTipoAvaria(req.tipoAvaria());
         oc.setDescricaoAvaria(req.descricaoAvaria());
-        oc.setEtapaResponsavelApurada(req.etapaResponsavelApurada() != null
-                ? req.etapaResponsavelApurada() : OrigemAvaria.INDETERMINADA);
+        oc.setEtapaResponsavelApurada(OrigemAvaria.INDETERMINADA);
         oc.setStatusChamado(StatusOcorrencia.ABERTO);
 
         u.setStatusAtual(StatusUnidade.AVARIADO);
@@ -83,6 +85,8 @@ public class OcorrenciaAvariaService {
         if (req.statusChamado() == StatusOcorrencia.GARANTIA_APROVADA
                 || req.statusChamado() == StatusOcorrencia.IMPROCEDENTE) {
             oc.setEncerradoEm(Instant.now());
+        } else {
+            oc.setEncerradoEm(null);
         }
         return toDto(ocorrenciaRepository.save(oc));
     }

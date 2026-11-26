@@ -21,9 +21,13 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "MovSeg • Portal Administrativo & Rastreabilidade",
+  title: {
+    default: "MovSeg | Rastreabilidade moveleira",
+    template: "%s | MovSeg",
+  },
   description:
-    "Sistema de rastreabilidade industrial, auditoria criptográfica e apuração de avarias da Móveis Matos & Lopes Ltda.",
+    "Evidências fotográficas e acompanhamento de pedidos da fábrica ao cliente. Rastreabilidade e assistência técnica para Móveis Matos & Lopes.",
+  icons: { icon: "/movseg-icon.png" },
 };
 
 export default function RootLayout({
@@ -36,7 +40,7 @@ export default function RootLayout({
       lang="pt-BR"
       className={`${spaceGrotesk.variable} ${workSans.variable} ${jetbrainsMono.variable}`}
     >
-      <body className="min-h-screen antialiased bg-[#f4fafe] text-[#161c1f]">
+      <body className="min-h-screen antialiased">
         {children}
       </body>
     </html>

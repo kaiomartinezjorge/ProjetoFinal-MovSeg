@@ -1,58 +1,82 @@
 import 'package:flutter/material.dart';
 
 class DeepSeaColors {
-  static const Color primary = Color(0xFF001026);
-  static const Color primaryContainer = Color(0xFF0B2545);
-  static const Color secondary = Color(0xFF395F95);
-  static const Color secondaryCobalt = Color(0xFF134074);
-  static const Color secondaryContainer = Color(0xFF9DC3FF);
-  static const Color tertiaryContainer = Color(0xFF06273D);
-  static const Color glacialBlue = Color(0xFF8DA9C4);
-  static const Color surface = Color(0xFFF4FAFE);
-  static const Color surfaceLow = Color(0xFFEEF4F8);
-  static const Color surfaceHigh = Color(0xFFE3E9ED);
-  static const Color onSurface = Color(0xFF161C1F);
-  static const Color onSurfaceVariant = Color(0xFF44474E);
-  static const Color success = Color(0xFF2A9D8F);
-  static const Color alert = Color(0xFFE76F51);
-  static const Color error = Color(0xFFBA1A1A);
+  static const Color primary = Color(0xFF0D1321);
+  static const Color primaryContainer = Color(0xFF1F2B42);
+  static const Color secondary = Color(0xFF405A74);
+  static const Color secondaryCobalt = secondary;
+  static const Color secondaryContainer = Color(0xFFD6DFEB);
+  static const Color tertiaryContainer = primary;
+  static const Color accent = Color(0xFFEEEBDA);
+  static const Color glacialBlue = Color(0xFF768AA7);
+  static const Color border = Color(0xFFD4DCE7);
+  static const Color surface = Color(0xFFF7F5EB);
+  static const Color surfaceLow = Color(0xFFF1F4F8);
+  static const Color surfaceHigh = Color(0xFFE7ECF2);
+  static const Color onSurface = primary;
+  static const Color onSurfaceVariant = Color(0xFF52647D);
+  static const Color success = Color(0xFF17634E);
+  static const Color alert = Color(0xFF9F5C31);
+  static const Color error = Color(0xFF993D30);
 }
 
 ThemeData buildDeepSeaTheme() {
+  final fieldRadius = BorderRadius.circular(10);
   return ThemeData(
     useMaterial3: true,
     scaffoldBackgroundColor: DeepSeaColors.surface,
     colorScheme: const ColorScheme.light(
       primary: DeepSeaColors.primaryContainer,
-      onPrimary: Colors.white,
+      onPrimary: DeepSeaColors.accent,
+      primaryContainer: DeepSeaColors.accent,
+      onPrimaryContainer: DeepSeaColors.primary,
       secondary: DeepSeaColors.secondary,
       onSecondary: Colors.white,
+      secondaryContainer: DeepSeaColors.secondaryContainer,
+      onSecondaryContainer: DeepSeaColors.primary,
       surface: DeepSeaColors.surface,
       onSurface: DeepSeaColors.onSurface,
       error: DeepSeaColors.error,
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: DeepSeaColors.primaryContainer,
-      foregroundColor: Colors.white,
+      foregroundColor: DeepSeaColors.accent,
       elevation: 0,
+    ),
+    navigationBarTheme: const NavigationBarThemeData(
+      backgroundColor: DeepSeaColors.surfaceLow,
+      indicatorColor: DeepSeaColors.secondaryContainer,
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: DeepSeaColors.surfaceLow,
+      labelStyle: const TextStyle(color: DeepSeaColors.onSurfaceVariant),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: fieldRadius,
+        borderSide: const BorderSide(color: DeepSeaColors.glacialBlue),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: fieldRadius,
+        borderSide: const BorderSide(color: DeepSeaColors.secondary, width: 2),
+      ),
+      border: OutlineInputBorder(borderRadius: fieldRadius),
     ),
     cardTheme: CardThemeData(
       color: Colors.white,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: DeepSeaColors.glacialBlue.withValues(alpha: 0.35)),
+        borderRadius: BorderRadius.circular(16),
+        side: const BorderSide(color: DeepSeaColors.border),
       ),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
-        backgroundColor: DeepSeaColors.primary,
-        foregroundColor: Colors.white,
+        backgroundColor: DeepSeaColors.primaryContainer,
+        foregroundColor: DeepSeaColors.accent,
         minimumSize: const Size.fromHeight(52),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(6)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
         textStyle: const TextStyle(
           fontWeight: FontWeight.w700,
-          letterSpacing: 0.5,
         ),
       ),
     ),

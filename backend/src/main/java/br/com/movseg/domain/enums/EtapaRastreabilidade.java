@@ -6,7 +6,8 @@ public enum EtapaRastreabilidade {
     EMBALAGEM(3),
     EXPEDICAO(4),
     TRANSPORTE(5),
-    RECEBIMENTO(6);
+    RECEBIMENTO(6),
+    POS_ENTREGA(7);
 
     private final int ordem;
 
@@ -19,6 +20,6 @@ public enum EtapaRastreabilidade {
     }
 
     public boolean isEtapaEntregaCampo() {
-        return this == TRANSPORTE || this == RECEBIMENTO;
+        return this == TRANSPORTE || this == RECEBIMENTO || this == POS_ENTREGA;
     }
 }

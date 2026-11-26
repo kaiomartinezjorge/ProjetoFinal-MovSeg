@@ -12,6 +12,7 @@ export type StatusUnidade =
   | "EMBALADO"
   | "EXPEDIDO"
   | "EM_TRANSPORTE"
+  | "EM_RECEBIMENTO"
   | "ENTREGUE"
   | "AVARIADO";
 
@@ -21,7 +22,8 @@ export type EtapaRastreabilidade =
   | "EMBALAGEM"
   | "EXPEDICAO"
   | "TRANSPORTE"
-  | "RECEBIMENTO";
+  | "RECEBIMENTO"
+  | "POS_ENTREGA";
 
 export type ResultadoMarco = "APROVADO" | "APROVADO_COM_RESSALVA" | "REPROVADO";
 
@@ -182,6 +184,8 @@ export interface IndicadoresDashboard {
   avariasPorLinhaProduto: { chave: string; total: number }[];
   unidadesPorTransportadora: { chave: string; total: number }[];
   avariasPorTipo: { chave: string; total: number }[];
+  avariasPorCliente?: { chave: string; total: number }[];
+  avariasPorTransportadora?: { chave: string; total: number }[];
   ultimosEventosAuditoria: Array<{
     marcoId: string;
     codigoQr: string;
@@ -195,16 +199,8 @@ export interface IndicadoresDashboard {
 
 export interface PublicoRastreio {
   codigoQr: string;
-  numeroSerie: string;
-  loteFabricacao: string;
-  chainId: string;
   produtoNome: string;
-  produtoSku: string;
-  linhaProducao: string;
-  destinoCidade: string | null;
-  clienteMascarado: string;
-  statusAtual: string;
+  statusAtual: StatusUnidade;
   cadeiaIntegra: boolean;
-  merkleRoot: string;
-  marcos: MarcoRastreabilidade[];
+  marcos: Pick<MarcoRastreabilidade, "etapa" | "ordemEtapa" | "resultado" | "registradoEm">[];
 }

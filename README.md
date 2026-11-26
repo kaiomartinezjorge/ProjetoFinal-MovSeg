@@ -1,7 +1,7 @@
 # Documentação Técnica: Sistema de Rastreabilidade MovSeg
 
 **Móveis Matos & Lopes Ltda.** (Ponte Nova/MG • Projeto Integrador SENAI CFP São Vicente de Paulo)  
-**Status do Documento:** Especificação Atualizada & Implementação Monorepo (Versão 2.0)
+**Status do Documento:** Implementação do sistema de coleta e acompanhamento
 
 ---
 
@@ -10,14 +10,14 @@
 O **MovSeg** é um sistema de rastreabilidade industrial, logística e de pós-venda voltado para o controle rigoroso da qualidade, integridade de embalagem e registro imutável de marcos operacionais da **Móveis Matos & Lopes Ltda.**
 
 ### O Problema Central
-O fluxo do móvel compreende 6 etapas obrigatórias: **Fabricação, Inspeção, Embalagem, Expedição, Transporte e Recebimento no Cliente**. Sem um histórico consolidado por evidências fotográficas, vídeos e marcações temporais confiáveis, a empresa não consegue comprovar se uma avaria ocorreu na fábrica, no carregamento, no transporte ou no recebimento final, assumindo custos indevidos com assistências técnicas, peças de reposição e fretes repetitivos.
+O fluxo reúne três marcos internos (**Fabricação**, **Inspeção** e **Embalagem**) e quatro pontos de coleta (**Saída da fábrica**, **Antes da entrega**, **Chegada ao cliente** e **Após a entrega**). A comparação das evidências ajuda a equipe a identificar em que intervalo o estado do móvel ou da embalagem mudou e a fundamentar o parecer técnico de assistência.
 
 ### Objetivo e Premissa Base de Negócio
-Registrar de forma simples, temporal e inviolável as condições físicas do produto e de sua embalagem em cada transição de etapa, adotando uma **separação clara de responsabilidades entre plataformas**:
+Cada registro associa a unidade à etapa, ao responsável, ao horário e aos arquivos enviados.
 
-- **Aplicativo Mobile (Flutter — Perfil `ENTREGADOR`):** Forma oficial de **fotografar e gravar vídeos** dos móveis durante o processo de transporte (`TRANSPORTE`) e entrega final (`RECEBIMENTO`), aproveitando a praticidade da câmera e do GPS de dispositivos móveis em campo.
-- **Portal Web (Next.js — Perfil `ADMIN` / `SUPERVISOR_QUALIDADE`):** Focado no perfil dos **administradores**, centralizando o acompanhamento da cadeia de custódia, cadastro de catálogo/lotes/etiquetas QR, governança de checklists dinâmicos, apuração técnica de ocorrências de avaria, indicadores gerenciais e auditoria criptográfica do ledger.
-- **Backend Centralizado (Java 21 + Spring Boot + PostgreSQL):** Fonte única de verdade que impõe o controle de acesso (RBAC), bloqueia registros de transporte/entrega fora do perfil de campo, calcula o encadeamento SHA-256 dos blocos e armazena as evidências de imagem e vídeo.
+- **Aplicativo móvel (Flutter):** Operadores e inspetores registram as etapas internas. Entregadores registram a carga antes da entrega, a chegada e a condição após a entrega. O aplicativo usa a câmera do celular e coleta a localização conforme a etapa e as permissões.
+- **Portal web (Next.js):** A tela `/painel` reúne as unidades por ordem de produção. A equipe autorizada consulta as evidências, analisa ocorrências e acompanha indicadores. A tela `/rastreio` oferece a consulta pública pelo código da etiqueta.
+- **API (Java 21 + Spring Boot + PostgreSQL):** Valida os perfis e a sequência de etapas, armazena os arquivos e calcula o encadeamento SHA-256 para detectar alterações.
 
 ---
 
@@ -37,25 +37,23 @@ ProjetoFinal-MovSeg/
 ### Pilha Tecnológica
 - **Backend (`backend/`):** Java 21 + **Spring Boot 3.4** (Spring Web, Spring Data JPA, Spring Security + JWT, Bean Validation, Flyway, Springdoc OpenAPI).
 - **Banco de Dados:** **PostgreSQL** com colunas `JSONB` para especificações técnicas e checklists dinâmicos, além de triggers `BEFORE UPDATE OR DELETE` garantindo comportamento *append-only* (WORM).
-- **Armazenamento de Mídia:** Armazenamento de objetos compatível com S3/MinIO (com abstração local em `./storage/evidences` para execução imediata sem dependências externas) vinculado por hashes `SHA-256`, suportando **fotos (`image/*`), vídeos (`video/mp4`, etc.) e termos (`application/pdf`)**.
+- **Armazenamento de mídia:** A API grava em `./storage/evidences` por padrão. Use `STORAGE_DIR` para configurar um volume persistente. Os marcos exigem uma foto ou um vídeo nos formatos aceitos pela API.
 - **Web Administrativo (`web/`):** **Next.js 15** (App Router), React 19, TypeScript e Tailwind CSS v4.
 - **Mobile Entregadores (`mobile/`):** **Flutter** (Dart) com captura oficial de câmera (foto e vídeo), cálculo local de SHA-256, geolocalização GPS e exibição de QR Code para validação pelo cliente.
 
 ---
 
-## 3. Identidade Visual e Design System (**DeepSea Industrial Ledger**)
+## 3. Identidade visual MovSeg
 
-Para assegurar legibilidade em ambientes fabris, docas de expedição e painéis gerenciais, adota-se a paleta **DeepSea**:
+O portal e o aplicativo usam a logo MovSeg e a paleta fornecida.
 
 | Token / Papel | Código Hex | Aplicação Principal |
 | :--- | :--- | :--- |
-| **DeepSea Primary** | `#001026` / `#0B2545` | Barras de navegação, cabeçalhos, botões principais e selos WORM. |
-| **DeepSea Secondary** | `#134074` / `#395F95` | Estados ativos, bordas em foco, progresso de custódia e destaques. |
-| **DeepSea Accent** | `#8DA9C4` / `#9DC3FF` | Divisores, badges secundários e bordas sutis de cartões. |
-| **DeepSea Canvas (Fundo)** | `#F4FAFE` / `#EEF4F8` | Fundo de dashboards e áreas de leitura de alto contraste. |
-| **DeepSea Dark (Texto)** | `#04151F` / `#161C1F` | Títulos, identificadores de série e textos principais. |
-| **Feedback Success** | `#2A9D8F` | Marcos aprovados sem avarias e integridade SHA-256 validada. |
-| **Feedback Alert / Error** | `#E76F51` / `#BA1A1A` | Divergências detectadas, avarias e quebras de cadeia. |
+| Azul-noite | `#0D1321` | Navegação e textos principais. |
+| Azul-marinho | `#1F2B42` | Botões principais e superfícies escuras. |
+| Azul-aço | `#405A74` | Links, ícones e foco. |
+| Azul-acinzentado | `#768AA7` | Bordas e detalhes visuais. |
+| Creme | `#EEEBDA` | Superfícies claras e contraste em superfícies escuras. |
 
 - **Tipografia:** `Space Grotesk` (títulos e métricas), `Work Sans` (textos e descrições) e `JetBrains Mono` (SKUs, QR Codes, carimbos temporais e hashes SHA-256).
 
@@ -64,26 +62,26 @@ Para assegurar legibilidade em ambientes fabris, docas de expedição e painéis
 ## 4. Requisitos Funcionais, Papéis e Restrições
 
 ### Separação de Perfis
-- **`ADMIN` / `SUPERVISOR_QUALIDADE` (Web):** Gerencia catálogo de produtos, gera unidades rastreáveis e etiquetas QR, edita templates dinâmicos de checklists, registra etapas fabris internas quando aplicável, analisa ocorrências (`OCORRENCIA_AVARIA`), atribui a etapa de origem apurada e consulta indicadores analíticos. Não registra etapas de `TRANSPORTE` ou `RECEBIMENTO` (regra imposta pela API com HTTP `403`).
-- **`ENTREGADOR` (Mobile):** Acessa unidades em rota por QR Code/Lote, fotografa e grava vídeos oficiais do móvel durante `TRANSPORTE` e `RECEBIMENTO`, preenche o checklist de entrega, anexa coordenadas GPS e reporta eventuais avarias no ato da descarga.
-- **`OPERADOR_FABRICA` / `INSPETOR`:** Registra os marcos internos (`FABRICACAO`, `INSPECAO`, `EMBALAGEM`, `EXPEDICAO`).
-- **Cliente Final / Auditor Externo (Público sem Login):** Consulta o passaporte digital via `/rastreio/{codigoQr}` com mascaramento de dados pessoais em conformidade com a **LGPD**.
+- **`ADMIN` / `SUPERVISOR_QUALIDADE` (web):** Gerencia catálogo, etiquetas e checklists, apura a origem das avarias e consulta indicadores. Os perfis também podem registrar etapas internas.
+- **`ENTREGADOR` (mobile):** Identifica a unidade pela etiqueta ou número de série e registra `TRANSPORTE`, `RECEBIMENTO` e `POS_ENTREGA`.
+- **`OPERADOR_FABRICA` / `INSPETOR` (mobile):** Registra os marcos internos `FABRICACAO`, `INSPECAO`, `EMBALAGEM` e `EXPEDICAO`.
+- **Consulta pública:** Mostra produto, situação, etapas e horários vinculados à etiqueta.
 
 ### Requisitos Funcionais Principais
 - **RF01:** Autenticação JWT com separação de acesso por plataforma (Web Admin vs. Mobile Entregador).
 - **RF02:** Cadastro de produtos, especificações técnicas e checklists dinâmicos (`JSONB`).
 - **RF03:** Emissão de unidades rastreáveis (`UNIDADE_MOVEL`) com código QR e `chain_id` exclusivos.
-- **RF04:** Registro sequencial e imutável dos 6 marcos (`FABRICACAO`, `INSPECAO`, `EMBALAGEM`, `EXPEDICAO`, `TRANSPORTE`, `RECEBIMENTO`) com encadeamento SHA-256.
+- **RF04:** Registro sequencial de sete marcos (`FABRICACAO`, `INSPECAO`, `EMBALAGEM`, `EXPEDICAO`, `TRANSPORTE`, `RECEBIMENTO`, `POS_ENTREGA`) com encadeamento SHA-256.
 - **RF05:** Upload e streaming de evidências fotográficas e **em vídeo** com hash SHA-256 individual.
 - **RF06:** Abertura automática de `OCORRENCIA_AVARIA` quando um marco é registrado com `REPROVADO` ou `houveAvaria = true`.
 - **RF07:** Triagem e parecer técnico de ocorrências no Portal Web com atribuição da etapa responsável (`FABRICACAO` a `CLIENTE_RECEBIMENTO`) e decisão (`GARANTIA_APROVADA`, `IMPROCEDENTE`).
-- **RF08:** Dashboard gerencial com taxa de integridade e agrupamentos por origem da avaria, linha de produto, tipo de dano e transportadora.
+- **RF08:** Indicadores de avarias por origem apurada, linha de produto, tipo, cliente e transportadora.
 - **RF09:** Revalidação da árvore de Merkle / cadeia SHA-256 e consulta pública LGPD via QR Code.
 
 ### Restrições Arquiteturais Atendidas
 - **Arquitetura Aberta e Baixo Custo:** Construído 100% com tecnologias open-source (Java/Spring, PostgreSQL, Next.js, Flutter), pronto para integração futura com ERP via REST/OpenAPI.
 - **Independência de Registros:** Marcos internos e de entrega são obrigatórios e auditáveis independentemente de ação do cliente final.
-- **Proteção LGPD:** O endpoint público `/api/v1/publico/rastreio/{codigoQr}` mascara o nome completo do destinatário e não expõe dados comerciais sensíveis.
+- **Controle de dados:** A consulta pública usa uma resposta reduzida. Fotos, observações internas e dados do destinatário ficam fora dessa resposta. A mídia exige autenticação.
 
 ---
 
@@ -119,7 +117,7 @@ erDiagram
         varchar transportadora
         varchar destino_cidade
         varchar cliente_destinatario
-        varchar status_atual "EM_FABRICACAO, INSPECIONADO, EMBALADO, EXPEDIDO, EM_TRANSPORTE, ENTREGUE, AVARIADO"
+        varchar status_atual "EM_FABRICACAO, INSPECIONADO, EMBALADO, EXPEDIDO, EM_TRANSPORTE, EM_RECEBIMENTO, ENTREGUE, AVARIADO"
         timestamp created_at
     }
 
@@ -139,7 +137,7 @@ erDiagram
         uuid id PK
         uuid unidade_movel_id FK
         uuid responsavel_id FK
-        varchar etapa "FABRICACAO, INSPECAO, EMBALAGEM, EXPEDICAO, TRANSPORTE, RECEBIMENTO"
+        varchar etapa "FABRICACAO, INSPECAO, EMBALAGEM, EXPEDICAO, TRANSPORTE, RECEBIMENTO, POS_ENTREGA"
         varchar resultado "APROVADO, APROVADO_COM_RESSALVA, REPROVADO"
         varchar local_descricao
         text observacoes
@@ -180,8 +178,8 @@ erDiagram
 ```
 
 ### Diretrizes de Imutabilidade no Banco de Dados
-- **WORM (`MARCO_RASTREABILIDADE` e `EVIDENCIA_MIDIA`):** Definido em [V1__init_schema.sql](file:///backend/src/main/resources/db/migration/V1__init_schema.sql) com triggers PostgreSQL (`trg_marco_imutavel` e `trg_evidencia_imutavel`) que bloqueiam qualquer `UPDATE` ou `DELETE`.
-- **Encadeamento Criptográfico:** Cada bloco armazena `hash_integridade_anterior` (64 zeros no bloco gênesis) e `hash_bloco` (SHA-256 determinístico), permitindo cálculo de *Merkle Root* e detecção imediata de adulterações.
+- **Registros somente para inclusão:** As tabelas de marcos e evidências usam gatilhos do PostgreSQL definidos em [V1__init_schema.sql](backend/src/main/resources/db/migration/V1__init_schema.sql) para bloquear alterações e exclusões.
+- **Encadeamento SHA-256:** A auditoria recalcula a cadeia. Ao abrir uma evidência, a API compara o arquivo com o hash registrado. O formato dos novos blocos inclui os hashes das evidências e o vínculo com a unidade, conforme a [migração V2](backend/src/main/resources/db/migration/V2__versionar_hash_de_marcos.sql). Blocos anteriores continuam verificáveis no formato original.
 
 ---
 
@@ -191,7 +189,7 @@ erDiagram
 ```bash
 docker compose up -d
 ```
-*(Ou utilize uma instância PostgreSQL local com o banco `movseg` configurado nas variáveis `DB_URL`, `DB_USER` e `DB_PASSWORD`.)*
+Também é possível usar uma instância PostgreSQL local. Configure `DB_URL`, `DB_USER` e `DB_PASSWORD`. O armazenamento de evidências usa o volume local da API, então apenas o PostgreSQL é necessário para executar o projeto.
 
 ### 2. Backend Centralizado (`backend/`)
 ```bash
@@ -202,6 +200,7 @@ cd backend
 - API disponível em `http://localhost:8080`
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 - Executar testes automatizados: `.\gradlew.bat test`
+- Para habilitar os dados de demonstração em um banco novo, use `$env:MOVSEG_DEMO_ENABLED = "true"` no PowerShell ou `export MOVSEG_DEMO_ENABLED=true` no Bash antes de iniciar a API. Em produção, mantenha a demonstração desativada, provisione as contas da equipe e defina um `JWT_SECRET` forte e persistente. Sem essa variável, a API gera uma chave a cada inicialização. Bancos que já receberam as contas de demonstração precisam ter essas contas desativadas ou substituídas antes do uso real.
 
 ### 3. Portal Web Administrativo (`web/`)
 ```bash
@@ -209,19 +208,20 @@ cd web
 npm install
 npm run dev
 ```
-- Acesse `http://localhost:3000` (login administrativo) ou `http://localhost:3000/rastreio/MOV-SEC-8893-XP` (passaporte público).
+- Acesse `http://localhost:3000` para a página inicial, `/login` para o portal ou `/rastreio` para a consulta pela etiqueta. O código `MOV-SEC-8893-XP` está disponível com os dados de demonstração.
 
-### 4. Aplicativo Mobile dos Entregadores (`mobile/`)
+### 4. Aplicativo móvel para coleta (`mobile/`)
 ```bash
 cd mobile
 flutter pub get
 flutter run --dart-define=API_URL=http://10.0.2.2:8080
 ```
-*(Para rodar no navegador ou desktop local: `flutter run -d chrome --dart-define=API_URL=http://localhost:8080`.)*
+Para testar a interface Flutter no Chrome, use `flutter run -d chrome --web-port=3001 --dart-define=API_URL=http://localhost:8080`. Inclua `http://localhost:3001` em `CORS_ALLOWED_ORIGINS` da API, mantendo também a origem usada pelo portal. Use o app nativo para verificar permissões e captura no aparelho.
 
-### Credenciais de Demonstração (Seed Inicial)
+### Credenciais de demonstração
 | Perfil | E-mail | Senha | Plataforma |
 | :--- | :--- | :--- | :--- |
 | **Administrador (`ADMIN`)** | `admin@movseg.com.br` | `MovSeg@2026` | Portal Web (`web/`) |
 | **Entregador (`ENTREGADOR`)** | `entregador@movseg.com.br` | `MovSeg@2026` | App Mobile (`mobile/`) |
-| **Inspetora CQ (`INSPETOR`)** | `inspetor@movseg.com.br` | `MovSeg@2026` | Portal Web (`web/`) |
+| **Inspetora CQ (`INSPETOR`)** | `inspetor@movseg.com.br` | `MovSeg@2026` | App Mobile (`mobile/`) |
+| **Operador (`OPERADOR_FABRICA`)** | `operador@movseg.com.br` | `MovSeg@2026` | App Mobile (`mobile/`) |

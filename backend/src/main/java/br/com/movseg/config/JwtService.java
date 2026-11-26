@@ -23,7 +23,7 @@ public class JwtService {
             @Value("${movseg.jwt.secret}") String secret,
             @Value("${movseg.jwt.expiration-ms:86400000}") long expirationMs
     ) {
-        this.key = deriveKey(secret);
+        this.key = secret.isBlank() ? Jwts.SIG.HS256.key().build() : deriveKey(secret);
         this.expirationMs = expirationMs;
     }
 

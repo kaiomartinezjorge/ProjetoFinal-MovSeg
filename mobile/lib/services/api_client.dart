@@ -28,8 +28,23 @@ class MovSegApiClient {
     final prefs = await SharedPreferences.getInstance();
     _token = prefs.getString(_tokenKey);
     final raw = prefs.getString(_userKey);
-    if (raw != null) {
+    if (_token == null || raw == null) return;
+    try {
       _usuario = Usuario.fromJson(jsonDecode(raw) as Map<String, dynamic>);
+      final resposta = await http
+          .get(Uri.parse('$baseUrl/api/v1/auth/me'), headers: _authHeaders)
+          .timeout(const Duration(seconds: 8));
+      if (resposta.statusCode == 401 || resposta.statusCode == 403) {
+        await sair();
+      } else if (resposta.statusCode == 200) {
+        _usuario = Usuario.fromJson(
+          jsonDecode(utf8.decode(resposta.bodyBytes)) as Map<String, dynamic>,
+        );
+      }
+    } on FormatException {
+      await sair();
+    } on Exception {
+      // Durante uma falha de conexão, o app exibe a sessão e permite tentar novamente.
     }
   }
 
@@ -48,15 +63,10 @@ class MovSegApiClient {
       body: jsonEncode({'login': login, 'senha': senha}),
     );
     if (res.statusCode >= 400) {
-      throw Exception(_extrairErro(res.body, res.statusCode));
+      throw Exception(_extrairErro(utf8.decode(res.bodyBytes), res.statusCode));
     }
     final data = jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>;
     final user = Usuario.fromJson(data['usuario'] as Map<String, dynamic>);
-    if (user.perfil != 'ENTREGADOR' && user.perfil != 'INTEGRACAO_API') {
-      throw Exception(
-        'Este app é exclusivo para Entregadores. Perfil ${user.perfil} deve usar o Portal Web Administrativo.',
-      );
-    }
     _token = data['token'] as String;
     _usuario = user;
 
@@ -70,13 +80,16 @@ class MovSegApiClient {
         if (_token != null) 'Authorization': 'Bearer $_token',
       };
 
+  Map<String, String> get headersEvidencia => _authHeaders;
+
   Future<List<UnidadeResumo>> listarUnidades({String? busca}) async {
     final uri = Uri.parse('$baseUrl/api/v1/unidades').replace(
-      queryParameters: (busca != null && busca.isNotEmpty) ? {'busca': busca} : null,
+      queryParameters:
+          (busca != null && busca.isNotEmpty) ? {'busca': busca} : null,
     );
     final res = await http.get(uri, headers: _authHeaders);
     if (res.statusCode >= 400) {
-      throw Exception(_extrairErro(res.body, res.statusCode));
+      throw Exception(_extrairErro(utf8.decode(res.bodyBytes), res.statusCode));
     }
     final list = jsonDecode(utf8.decode(res.bodyBytes)) as List;
     return list
@@ -86,11 +99,12 @@ class MovSegApiClient {
 
   Future<TimelineUnidade> buscarTimelinePorCodigo(String codigo) async {
     final res = await http.get(
-      Uri.parse('$baseUrl/api/v1/unidades/codigo/${Uri.encodeComponent(codigo)}'),
+      Uri.parse(
+          '$baseUrl/api/v1/unidades/codigo/${Uri.encodeComponent(codigo)}'),
       headers: _authHeaders,
     );
     if (res.statusCode >= 400) {
-      throw Exception(_extrairErro(res.body, res.statusCode));
+      throw Exception(_extrairErro(utf8.decode(res.bodyBytes), res.statusCode));
     }
     return TimelineUnidade.fromJson(
       jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>,
@@ -103,7 +117,7 @@ class MovSegApiClient {
       headers: _authHeaders,
     );
     if (res.statusCode >= 400) {
-      throw Exception(_extrairErro(res.body, res.statusCode));
+      throw Exception(_extrairErro(utf8.decode(res.bodyBytes), res.statusCode));
     }
     return TimelineUnidade.fromJson(
       jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>,
@@ -116,7 +130,7 @@ class MovSegApiClient {
       headers: _authHeaders,
     );
     if (res.statusCode >= 400) {
-      throw Exception(_extrairErro(res.body, res.statusCode));
+      throw Exception(_extrairErro(utf8.decode(res.bodyBytes), res.statusCode));
     }
     return AuditoriaLedger.fromJson(
       jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>,
@@ -168,16 +182,17 @@ class MovSegApiClient {
         'arquivos',
         ev.bytes,
         filename: ev.filename,
-        contentType: MediaType(parts[0], parts.length > 1 ? parts[1] : 'octet-stream'),
+        contentType:
+            MediaType(parts[0], parts.length > 1 ? parts[1] : 'octet-stream'),
       ));
-      req.fields['tipos'] = ev.tipoEvidencia;
-      req.fields['legendas'] = ev.legenda;
+      req.files.add(http.MultipartFile.fromString('tipos', ev.tipoEvidencia));
+      req.files.add(http.MultipartFile.fromString('legendas', ev.legenda));
     }
 
     final streamed = await req.send();
     final res = await http.Response.fromStream(streamed);
     if (res.statusCode >= 400) {
-      throw Exception(_extrairErro(res.body, res.statusCode));
+      throw Exception(_extrairErro(utf8.decode(res.bodyBytes), res.statusCode));
     }
     return MarcoRastreabilidade.fromJson(
       jsonDecode(utf8.decode(res.bodyBytes)) as Map<String, dynamic>,

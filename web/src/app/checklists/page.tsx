@@ -72,12 +72,12 @@ export default function ChecklistsPage() {
   return (
     <AdminShell>
       <div className="flex flex-col gap-6">
-        <div className="bg-white rounded-xl p-6 border border-[#8da9c4]/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="bg-white rounded-xl p-6 border border-brand-outline/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <span className="font-mono-tech text-xs uppercase text-[#395f95] font-semibold">
+            <span className="font-mono-tech text-xs uppercase text-brand-steel font-semibold">
               Governança de Qualidade Dinâmica (JSONB)
             </span>
-            <h1 className="font-headline text-2xl font-bold text-[#001026] mt-1">
+            <h1 className="font-headline text-2xl font-bold text-brand-ink mt-1">
               Checklists de Qualidade por Linha de Produto
             </h1>
           </div>
@@ -88,8 +88,8 @@ export default function ChecklistsPage() {
                 onClick={() => selecionarProduto(p)}
                 className={`px-3 py-2 rounded-lg font-mono-tech text-xs font-semibold transition-colors ${
                   selectedId === p.id
-                    ? "bg-[#0b2545] text-white"
-                    : "bg-[#eef4f8] text-[#134074] hover:bg-[#d5e3ff]"
+                    ? "bg-brand-navy text-white"
+                    : "bg-brand-fog text-brand-navy hover:bg-brand-tint"
                 }`}
               >
                 {p.sku} • {p.nome}
@@ -99,26 +99,26 @@ export default function ChecklistsPage() {
         </div>
 
         {msg && (
-          <div className="p-3 rounded-lg bg-[#2a9d8f]/15 border border-[#2a9d8f] text-sm text-[#04151f] font-medium">
+          <div className="p-3 rounded-lg bg-[#2a9d8f]/15 border border-[#2a9d8f] text-sm text-brand-ink font-medium">
             {msg}
           </div>
         )}
 
         {produtoAtual && (
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            <div className="lg:col-span-8 bg-white rounded-xl p-6 border border-[#8da9c4]/30 flex flex-col gap-4">
+            <div className="lg:col-span-8 bg-white rounded-xl p-6 border border-brand-outline/30 flex flex-col gap-4">
               <div className="flex items-center justify-between">
                 <div>
-                  <h2 className="font-headline text-lg font-bold text-[#001026]">
+                  <h2 className="font-headline text-lg font-bold text-brand-ink">
                     Quesitos de Inspeção ({items.length})
                   </h2>
-                  <p className="text-xs text-[#44474e]">
+                  <p className="text-xs text-brand-muted">
                     {produtoAtual.linhaProducao} • SKU {produtoAtual.sku}
                   </p>
                 </div>
                 <button
                   onClick={salvarChecklist}
-                  className="h-10 px-4 rounded bg-[#0b2545] hover:bg-[#134074] text-white font-headline text-xs font-bold flex items-center gap-2"
+                  className="h-10 px-4 rounded bg-brand-navy hover:bg-brand-navy text-white font-headline text-xs font-bold flex items-center gap-2"
                 >
                   <ClipboardCheck className="w-4 h-4" />
                   SALVAR CHECKLIST MODELO
@@ -129,23 +129,23 @@ export default function ChecklistsPage() {
                 {items.map((item, idx) => (
                   <div
                     key={`${item.codigo}-${idx}`}
-                    className="p-4 rounded-lg bg-[#eef4f8] border border-[#8da9c4]/30 flex items-center justify-between gap-4"
+                    className="p-4 rounded-lg bg-brand-fog border border-brand-outline/30 flex items-center justify-between gap-4"
                   >
                     <div className="flex items-start gap-3">
                       <CheckSquare className="w-5 h-5 text-[#2a9d8f] shrink-0 mt-0.5" />
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-mono-tech text-[11px] font-bold text-[#134074]">
+                          <span className="font-mono-tech text-[11px] font-bold text-brand-navy">
                             {item.codigo}
                           </span>
-                          <span className="px-2 py-0.5 rounded bg-white font-mono-tech text-[10px] text-[#44474e]">
+                          <span className="px-2 py-0.5 rounded bg-white font-mono-tech text-[10px] text-brand-muted">
                             {item.categoria}
                           </span>
                         </div>
-                        <p className="font-semibold text-sm text-[#001026] mt-0.5">
+                        <p className="font-semibold text-sm text-brand-ink mt-0.5">
                           {item.item}
                         </p>
-                        <p className="text-xs text-[#44474e]">
+                        <p className="text-xs text-brand-muted">
                           Critério: {item.criterio}
                         </p>
                       </div>
@@ -164,42 +164,42 @@ export default function ChecklistsPage() {
 
             <form
               onSubmit={adicionarItem}
-              className="lg:col-span-4 bg-white rounded-xl p-6 border border-[#8da9c4]/30 flex flex-col gap-3"
+              className="lg:col-span-4 bg-white rounded-xl p-6 border border-brand-outline/30 flex flex-col gap-3"
             >
-              <h3 className="font-headline text-lg font-bold text-[#001026] flex items-center gap-2">
-                <Plus className="w-5 h-5 text-[#395f95]" />
+              <h3 className="font-headline text-lg font-bold text-brand-ink flex items-center gap-2">
+                <Plus className="w-5 h-5 text-brand-steel" />
                 Adicionar Novo Quesito
               </h3>
               <input
                 value={novoCodigo}
                 onChange={(e) => setNovoCodigo(e.target.value)}
                 placeholder="Código (ex: CHK-05)"
-                className="h-10 px-3 rounded border border-[#8da9c4] font-mono-tech text-xs"
+                className="h-10 px-3 rounded border border-brand-outline font-mono-tech text-xs"
               />
               <input
                 value={novaCategoria}
                 onChange={(e) => setNovaCategoria(e.target.value)}
                 placeholder="Categoria"
                 required
-                className="h-10 px-3 rounded border border-[#8da9c4] text-sm"
+                className="h-10 px-3 rounded border border-brand-outline text-sm"
               />
               <input
                 value={novoItem}
                 onChange={(e) => setNovoItem(e.target.value)}
                 placeholder="Descrição da verificação"
                 required
-                className="h-10 px-3 rounded border border-[#8da9c4] text-sm"
+                className="h-10 px-3 rounded border border-brand-outline text-sm"
               />
               <input
                 value={novoCriterio}
                 onChange={(e) => setNovoCriterio(e.target.value)}
                 placeholder="Critério de aprovação"
                 required
-                className="h-10 px-3 rounded border border-[#8da9c4] text-sm"
+                className="h-10 px-3 rounded border border-brand-outline text-sm"
               />
               <button
                 type="submit"
-                className="h-11 rounded bg-[#395f95] hover:bg-[#134074] text-white font-headline text-xs font-bold"
+                className="h-11 rounded bg-brand-steel hover:bg-brand-navy text-white font-headline text-xs font-bold"
               >
                 + INCLUIR NA LISTA
               </button>

@@ -56,6 +56,9 @@ public class MarcoRastreabilidade {
     @Column(name = "hash_integridade_anterior", nullable = false, length = 64, updatable = false)
     private String hashIntegridadeAnterior;
 
+    @Column(name = "hash_versao", nullable = false, updatable = false)
+    private int hashVersao = 1;
+
     @Column(name = "registrado_em", nullable = false, updatable = false)
     private Instant registradoEm;
 
@@ -92,6 +95,8 @@ public class MarcoRastreabilidade {
     public void setHashBloco(String hashBloco) { this.hashBloco = hashBloco; }
     public String getHashIntegridadeAnterior() { return hashIntegridadeAnterior; }
     public void setHashIntegridadeAnterior(String hashIntegridadeAnterior) { this.hashIntegridadeAnterior = hashIntegridadeAnterior; }
+    public int getHashVersao() { return hashVersao; }
+    public void setHashVersao(int hashVersao) { this.hashVersao = hashVersao; }
     public Instant getRegistradoEm() { return registradoEm; }
     public void setRegistradoEm(Instant registradoEm) { this.registradoEm = registradoEm; }
     public List<EvidenciaMidia> getEvidencias() { return evidencias; }

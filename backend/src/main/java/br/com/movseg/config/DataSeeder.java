@@ -6,6 +6,7 @@ import br.com.movseg.domain.repository.*;
 import br.com.movseg.service.CryptoLedgerService;
 import br.com.movseg.service.StorageService;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -17,6 +18,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 @Component
+@ConditionalOnProperty(name = "movseg.demo.enabled", havingValue = "true")
 public class DataSeeder implements CommandLineRunner {
 
     private final UsuarioRepository usuarioRepository;
@@ -177,18 +179,35 @@ public class DataSeeder implements CommandLineRunner {
                 Map.of("alinhamento_ripado", true),
                 new BigDecimal("-20.4150000"), new BigDecimal("-42.9050000"),
                 base.plus(2, ChronoUnit.HOURS), CryptoLedgerService.HASH_GENESIS);
+        anexarSvgDemo(u2m1, TipoEvidencia.FOTO_PRODUTO, "Painel ripado conferido", "#0B2545", "Usinagem concluída");
+        MarcoRastreabilidade u2Inspecao = criarMarco(u2, inspetor, EtapaRastreabilidade.INSPECAO, ResultadoMarco.APROVADO,
+                "Fábrica Matos & Lopes • Estação de Inspeção", "Painel e quinas sem danos aparentes.",
+                Map.of("painel_conferido", true), null, null, base.plus(6, ChronoUnit.HOURS), u2m1.getHashBloco());
+        anexarSvgDemo(u2Inspecao, TipoEvidencia.FOTO_PRODUTO, "Quinas e painel vistoriados", "#134074", "Inspeção concluída");
+        MarcoRastreabilidade u2Embalagem = criarMarco(u2, embalador, EtapaRastreabilidade.EMBALAGEM, ResultadoMarco.APROVADO,
+                "Galpão de Embalagem", "Proteções e lacre aplicados aos volumes.",
+                Map.of("lacre_integro", true), null, null, base.plus(25, ChronoUnit.HOURS), u2Inspecao.getHashBloco());
+        anexarSvgDemo(u2Embalagem, TipoEvidencia.FOTO_EMBALAGEM, "Embalagem e lacre conferidos", "#2A9D8F", "Volumes protegidos");
+        MarcoRastreabilidade u2Expedicao = criarMarco(u2, operador, EtapaRastreabilidade.EXPEDICAO, ResultadoMarco.APROVADO,
+                "Doca de expedição", "Volumes carregados com cantoneiras e cintas.",
+                Map.of("carga_fixada", true), null, null, base.plus(49, ChronoUnit.HOURS), u2Embalagem.getHashBloco());
+        anexarSvgDemo(u2Expedicao, TipoEvidencia.FOTO_CARGA, "Volumes carregados", "#395F95", "Saída da fábrica");
+        MarcoRastreabilidade u2Transporte = criarMarco(u2, entregador, EtapaRastreabilidade.TRANSPORTE, ResultadoMarco.APROVADO,
+                "Em rota", "Lacre conferido durante a vistoria em trânsito.",
+                Map.of("lacre_integro", true), null, null, base.plus(55, ChronoUnit.HOURS), u2Expedicao.getHashBloco());
+        anexarSvgDemo(u2Transporte, TipoEvidencia.FOTO_LACRE, "Conferência durante o transporte", "#0B2545", "Antes da entrega");
         MarcoRastreabilidade u2m2 = criarMarco(u2, entregador, EtapaRastreabilidade.RECEBIMENTO, ResultadoMarco.REPROVADO,
                 "Belo Horizonte/MG • Endereço de Entrega",
-                "Quina inferior direita com amassado e rasgo no papelão externo detectado na descarga.",
+                "Quina inferior direita com amassado e rasgo no papelão externo observado na chegada.",
                 Map.of("lacre_integro", false, "houve_impacto", true),
                 new BigDecimal("-19.9191000"), new BigDecimal("-43.9386000"),
-                base.plus(60, ChronoUnit.HOURS), u2m1.getHashBloco());
+                base.plus(60, ChronoUnit.HOURS), u2Transporte.getHashBloco());
         anexarSvgDemo(u2m2, TipoEvidencia.FOTO_AVARIA, "Avaria na Quina Inferior", "#E76F51", "Divergência na Entrega");
 
         OcorrenciaAvaria oc = new OcorrenciaAvaria();
         oc.setUnidadeMovel(u2);
         oc.setMarcoDeteccao(u2m2);
-        oc.setEtapaResponsavelApurada(OrigemAvaria.TRANSPORTE);
+        oc.setEtapaResponsavelApurada(OrigemAvaria.INDETERMINADA);
         oc.setTipoAvaria("Impacto em Quina / Embalagem Rompida");
         oc.setDescricaoAvaria("Entregador registrou foto da embalagem rasgada e quina amassada antes da descarga ao cliente.");
         oc.setStatusChamado(StatusOcorrencia.ABERTO);

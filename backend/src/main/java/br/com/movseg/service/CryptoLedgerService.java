@@ -3,25 +3,47 @@ package br.com.movseg.service;
 import br.com.movseg.domain.entity.MarcoRastreabilidade;
 import br.com.movseg.domain.entity.UnidadeMovel;
 import br.com.movseg.dto.RastreabilidadeDtos;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
 
+import java.io.IOException;
+import java.io.OutputStream;
+import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
+import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HexFormat;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 
 @Service
 public class CryptoLedgerService {
 
     public static final String HASH_GENESIS = "0".repeat(64);
+    private static final ObjectMapper HASH_MAPPER = new ObjectMapper();
 
     public String calcularSha256Hex(byte[] bytes) {
+        return HexFormat.of().formatHex(novoDigest().digest(bytes));
+    }
+
+    public String calcularSha256Hex(Resource resource) throws IOException {
+        MessageDigest digest = novoDigest();
+        try (var stream = new DigestInputStream(resource.getInputStream(), digest)) {
+            stream.transferTo(OutputStream.nullOutputStream());
+        }
+        return HexFormat.of().formatHex(digest.digest());
+    }
+
+    private MessageDigest novoDigest() {
         try {
-            byte[] digest = MessageDigest.getInstance("SHA-256").digest(bytes);
-            return HexFormat.of().formatHex(digest);
+            return MessageDigest.getInstance("SHA-256");
         } catch (NoSuchAlgorithmException e) {
             throw new IllegalStateException("Algoritmo SHA-256 indisponível", e);
         }
@@ -32,7 +54,7 @@ public class CryptoLedgerService {
     }
 
     public String calcularHashBloco(MarcoRastreabilidade marco) {
-        String payload = String.join("|",
+        List<String> campos = List.of(
                 marco.getUnidadeMovel().getId().toString(),
                 marco.getResponsavel().getId().toString(),
                 marco.getEtapa().name(),
@@ -43,7 +65,41 @@ public class CryptoLedgerService {
                 marco.getLongitude() == null ? "" : marco.getLongitude().stripTrailingZeros().toPlainString(),
                 marco.getHashIntegridadeAnterior()
         );
-        return calcularSha256Texto(payload);
+        if (marco.getHashVersao() == 1) {
+            return calcularSha256Texto(String.join("|", campos));
+        }
+
+        List<String> evidencias = marco.getEvidencias().stream()
+                .map(ev -> serializar(Arrays.asList(
+                        ev.getStorageKey(), ev.getHashSha256(), ev.getTipoEvidencia().name(),
+                        ev.getMimeType(), ev.getTamanhoBytes(), ev.getLegenda(), ev.getDuracaoSegundos())))
+                .sorted()
+                .toList();
+        return calcularSha256Texto(serializar(Arrays.asList(
+                marco.getHashVersao(), campos, marco.getObservacoes(), normalizarJson(marco.getChecklistMetadados()), evidencias)));
+    }
+
+    private Object normalizarJson(Object valor) {
+        if (valor instanceof Map<?, ?> mapa) {
+            Map<String, Object> ordenado = new TreeMap<>();
+            mapa.forEach((chave, item) -> ordenado.put((String) chave, normalizarJson(item)));
+            return ordenado;
+        }
+        if (valor instanceof List<?> lista) {
+            return lista.stream().map(this::normalizarJson).toList();
+        }
+        if (valor instanceof Number numero) {
+            return new BigDecimal(numero.toString()).stripTrailingZeros();
+        }
+        return valor;
+    }
+
+    private String serializar(Object dados) {
+        try {
+            return HASH_MAPPER.writeValueAsString(dados);
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("Falha ao serializar o conteúdo do bloco.", e);
+        }
     }
 
     public RastreabilidadeDtos.AuditoriaLedgerResponse verificarCadeia(

@@ -12,6 +12,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Locale;
 import java.util.UUID;
 
 @Service
@@ -58,17 +59,29 @@ public class UnidadeMovelService {
 
     @Transactional(readOnly = true)
     public RastreabilidadeDtos.TimelineUnidadeResponse buscarPorIdentificador(String codigo) {
-        List<UnidadeMovel> encontradas = unidadeRepository.buscarPorIdentificador(codigo.trim());
-        if (encontradas.isEmpty()) {
-            throw new ApiException(HttpStatus.NOT_FOUND, "Nenhuma unidade encontrada para o código: " + codigo);
+        String termo = codigo.trim();
+        var qr = unidadeRepository.findByCodigoQrIgnoreCase(termo);
+        var serie = unidadeRepository.findByNumeroSerieIgnoreCase(termo);
+        if (qr.isPresent() || serie.isPresent()) {
+            if (qr.isPresent() && serie.isPresent() && !qr.get().getId().equals(serie.get().getId())) {
+                throw new ApiException(HttpStatus.CONFLICT, "Código ambíguo. Selecione a unidade na lista de pedidos.");
+            }
+            return montarTimeline(qr.orElseGet(serie::get));
         }
-        return montarTimeline(encontradas.get(0));
+
+        List<UnidadeMovel> encontradas = unidadeRepository.buscarPorLoteOuOrdem(termo);
+        if (encontradas.isEmpty()) {
+            throw new ApiException(HttpStatus.NOT_FOUND, "Nenhuma unidade encontrada para o código informado.");
+        }
+        if (encontradas.size() > 1) {
+            throw new ApiException(HttpStatus.CONFLICT, "Este pedido ou lote possui mais de um móvel. Use o QR ou número de série da unidade.");
+        }
+        return montarTimeline(encontradas.getFirst());
     }
 
     @Transactional(readOnly = true)
     public RastreabilidadeDtos.PublicoRastreioResponse buscarPassaportePublico(String codigoQr) {
         UnidadeMovel u = unidadeRepository.findByCodigoQrIgnoreCase(codigoQr.trim())
-                .or(() -> unidadeRepository.findByNumeroSerieIgnoreCase(codigoQr.trim()))
                 .orElseThrow(() -> new ApiException(HttpStatus.NOT_FOUND, "Passaporte não localizado."));
 
         List<MarcoRastreabilidade> marcos = marcoRepository.findByUnidadeMovelIdOrderByRegistradoEmAsc(u.getId());
@@ -76,18 +89,13 @@ public class UnidadeMovelService {
 
         return new RastreabilidadeDtos.PublicoRastreioResponse(
                 u.getCodigoQr(),
-                u.getNumeroSerie(),
-                u.getLoteFabricacao(),
-                u.getChainId(),
                 u.getProduto().getNome(),
-                u.getProduto().getSku(),
-                u.getProduto().getLinhaProducao(),
-                u.getDestinoCidade(),
-                mascararClienteLgpd(u.getClienteDestinatario()),
                 u.getStatusAtual().name(),
                 auditoria.cadeiaIntegra(),
-                auditoria.merkleRoot(),
-                marcos.stream().map(this::toMarcoDto).toList()
+                marcos.stream()
+                        .map(m -> new RastreabilidadeDtos.MarcoPublicoResponse(
+                                m.getEtapa(), m.getEtapa().getOrdem(), m.getResultado(), m.getRegistradoEm()))
+                        .toList()
         );
     }
 
@@ -99,12 +107,15 @@ public class UnidadeMovelService {
         Produto produto = produtoService.buscarEntidade(req.produtoId());
         UnidadeMovel u = new UnidadeMovel();
         u.setProduto(produto);
-        u.setNumeroSerie(req.numeroSerie().trim().toUpperCase());
-        u.setLoteFabricacao(req.loteFabricacao().trim().toUpperCase());
-        u.setOrdemProducao(req.ordemProducao().trim().toUpperCase());
+        u.setNumeroSerie(req.numeroSerie().trim().toUpperCase(Locale.ROOT));
+        u.setLoteFabricacao(req.loteFabricacao().trim().toUpperCase(Locale.ROOT));
+        u.setOrdemProducao(req.ordemProducao().trim().toUpperCase(Locale.ROOT));
         String qr = (req.codigoQr() != null && !req.codigoQr().isBlank())
-                ? req.codigoQr().trim().toUpperCase()
-                : "MOV-SEC-" + u.getNumeroSerie().substring(Math.max(0, u.getNumeroSerie().length() - 6));
+                ? req.codigoQr().trim().toUpperCase(Locale.ROOT)
+                : "MOV-SEC-" + UUID.randomUUID().toString().toUpperCase(Locale.ROOT);
+        if (unidadeRepository.findByCodigoQrIgnoreCase(qr).isPresent()) {
+            throw new ApiException(HttpStatus.CONFLICT, "Código QR já cadastrado.");
+        }
         u.setCodigoQr(qr);
         u.setChainId("#MOV-" + Math.abs(qr.hashCode() % 9000 + 1000));
         u.setTransportadora(req.transportadora());
@@ -200,10 +211,4 @@ public class UnidadeMovelService {
         );
     }
 
-    private String mascararClienteLgpd(String cliente) {
-        if (cliente == null || cliente.isBlank()) return "Cliente Final Protegido (LGPD)";
-        String[] partes = cliente.trim().split("\\s+");
-        if (partes.length == 1) return partes[0].charAt(0) + "***";
-        return partes[0] + " " + partes[partes.length - 1].charAt(0) + ".";
-    }
 }

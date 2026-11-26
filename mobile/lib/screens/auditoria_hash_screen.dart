@@ -28,11 +28,26 @@ class _AuditoriaHashScreenState extends State<AuditoriaHashScreen> {
     _auditoria = widget.timeline.auditoria;
   }
 
+  @override
+  void didUpdateWidget(covariant AuditoriaHashScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.timeline != oldWidget.timeline) {
+      _auditoria = widget.timeline.auditoria;
+    }
+  }
+
   Future<void> _revalidar() async {
     setState(() => _revalidando = true);
     try {
       final nova = await widget.api.revalidarLedger(widget.timeline.unidade.id);
       if (mounted) setState(() => _auditoria = nova);
+    } catch (erro) {
+      if (mounted) {
+        final mensagem = erro.toString().replaceFirst('Exception: ', '');
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(mensagem)),
+        );
+      }
     } finally {
       if (mounted) setState(() => _revalidando = false);
     }
@@ -105,9 +120,7 @@ class _AuditoriaHashScreenState extends State<AuditoriaHashScreen> {
                   onPressed: _revalidando ? null : _revalidar,
                   icon: const Icon(Icons.refresh_rounded),
                   label: Text(
-                    _revalidando
-                        ? 'REVALIDANDO...'
-                        : 'REVALIDAR ÁRVORE AGORA',
+                    _revalidando ? 'REVALIDANDO...' : 'REVALIDAR ÁRVORE AGORA',
                   ),
                 ),
               ],

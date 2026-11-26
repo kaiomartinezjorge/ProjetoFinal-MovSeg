@@ -14,5 +14,7 @@ spring:
     enabled: false
 
 movseg:
+  demo:
+    enabled: true
   storage:
     root-dir: ./build/test-storage

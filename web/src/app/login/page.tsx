@@ -1,118 +1,104 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Lock, Package, ShieldCheck } from "lucide-react";
+import { Eye, EyeOff, Monitor, ShieldCheck } from "lucide-react";
+import { MovSegBrand } from "@/components/MovSegBrand";
 import { api, saveSession } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
-  const [login, setLogin] = useState("admin@movseg.com.br");
-  const [senha, setSenha] = useState("MovSeg@2026");
+  const [login, setLogin] = useState("");
+  const [senha, setSenha] = useState("");
+  const [mostrarSenha, setMostrarSenha] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [enviando, setEnviando] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function entrar(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (enviando) return;
     setErro(null);
-    setLoading(true);
+    setEnviando(true);
     try {
-      const resp = await api.login(login, senha);
-      if (resp.usuario.perfil === "ENTREGADOR") {
-        setErro(
-          "O perfil ENTREGADOR utiliza exclusivamente o aplicativo móvel Flutter para captura de fotos e vídeos em entrega."
-        );
-        setLoading(false);
+      const resposta = await api.login(login.trim(), senha);
+      if (resposta.usuario.perfil === "ENTREGADOR") {
+        setErro("Use o aplicativo móvel MovSeg para acessar com seu perfil de entregador.");
         return;
       }
-      saveSession(resp.token, resp.usuario);
-      router.push("/");
-    } catch (err) {
-      setErro(err instanceof Error ? err.message : "Falha na autenticação.");
+      saveSession(resposta.token, resposta.usuario);
+      router.replace("/painel");
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : "Falha na autenticação.");
     } finally {
-      setLoading(false);
+      setEnviando(false);
     }
   }
 
   return (
-    <div className="min-h-screen bg-[#0b2545] flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-md bg-white rounded-xl shadow-2xl border border-[#8da9c4]/40 overflow-hidden">
-        <div className="bg-[#06273d] p-6 text-white flex items-center gap-3">
-          <div className="w-11 h-11 rounded-lg bg-[#395f95] flex items-center justify-center">
-            <Package className="w-6 h-6" />
-          </div>
+    <main className="min-h-screen bg-brand-paper text-brand-ink">
+      <header className="mx-auto flex w-[calc(100%_-_2.5rem)] max-w-[1248px] items-center justify-between border-b border-brand-line py-5">
+        <MovSegBrand />
+        <Link href="/rastreio" className="text-sm font-semibold text-brand-steel hover:underline">Consultar rastreio</Link>
+      </header>
+      <div className="mx-auto grid w-[calc(100%_-_2.5rem)] max-w-5xl gap-5 py-9 md:grid-cols-2 md:py-16">
+        <section className="flex flex-col justify-between gap-8 rounded-2xl bg-brand-navy p-7 text-white md:p-10">
           <div>
-            <h1 className="font-headline text-2xl font-bold leading-tight">
-              MovSeg Admin
-            </h1>
-            <p className="font-mono-tech text-[11px] text-[#9dc3ff] uppercase tracking-wider">
-              Móveis Matos &amp; Lopes Ltda.
-            </p>
+            <p className="flex items-center gap-2 text-sm font-semibold text-brand-cream"><Monitor size={18} /> Portal MovSeg</p>
+            <h1 className="font-headline mt-6 max-w-sm text-4xl leading-none font-bold tracking-[-.055em] md:text-6xl">Acompanhe seus pedidos.</h1>
+            <p className="mt-4 max-w-sm text-brand-light">Consulte os registros da fábrica à entrega, as fotos de cada etapa e as ocorrências em análise.</p>
           </div>
-        </div>
-
-        <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
-          <div className="p-3 rounded-lg bg-[#eef4f8] border border-[#8da9c4]/40 text-xs text-[#04151f] flex items-start gap-2">
-            <ShieldCheck className="w-4 h-4 text-[#2a9d8f] shrink-0 mt-0.5" />
-            <span>
-              Acesso exclusivo para <strong>Administradores, Qualidade e Fábrica</strong>.
-              Entregadores devem acessar pelo App Mobile MovSeg.
-            </span>
-          </div>
-
-          {erro && (
-            <div className="p-3 rounded-lg bg-[#ffdad6] border border-[#ba1a1a]/30 text-xs text-[#93000a] font-medium">
-              {erro}
-            </div>
-          )}
-
+          <p className="flex items-center gap-2 text-sm text-brand-light"><ShieldCheck size={18} className="shrink-0 text-brand-cream" /> Móveis Matos &amp; Lopes</p>
+        </section>
+        <form onSubmit={entrar} className="flex flex-col gap-5 rounded-2xl border border-brand-line bg-white p-7 md:p-10" aria-busy={enviando}>
           <div>
-            <label className="block font-mono-tech text-xs font-semibold text-[#04151f] mb-1">
-              E-mail ou Matrícula
-            </label>
+            <h2 className="font-headline text-3xl font-bold tracking-[-.045em]">Entrar no portal</h2>
+            <p className="mt-1 text-brand-muted">Use suas credenciais de trabalho.</p>
+          </div>
+          <label htmlFor="login" className="grid gap-2 text-sm font-semibold">
+            E-mail ou matrícula
             <input
+              id="login"
+              name="username"
               type="text"
+              autoComplete="username"
+              autoCapitalize="none"
+              spellCheck={false}
               value={login}
-              onChange={(e) => setLogin(e.target.value)}
+              onChange={(event) => setLogin(event.target.value)}
               required
-              className="w-full h-11 px-3 rounded border border-[#8da9c4] text-sm focus:outline-none focus:border-2 focus:border-[#134074]"
+              className="h-12 w-full rounded-lg border border-brand-outline bg-white px-3 text-base font-normal outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand-steel"
             />
-          </div>
-
+          </label>
           <div>
-            <label className="block font-mono-tech text-xs font-semibold text-[#04151f] mb-1">
-              Senha
-            </label>
-            <input
-              type="password"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              required
-              className="w-full h-11 px-3 rounded border border-[#8da9c4] text-sm focus:outline-none focus:border-2 focus:border-[#134074]"
-            />
+            <label htmlFor="senha" className="mb-2 block text-sm font-semibold">Senha</label>
+            <div className="relative">
+              <input
+                id="senha"
+                name="password"
+                type={mostrarSenha ? "text" : "password"}
+                autoComplete="current-password"
+                value={senha}
+                onChange={(event) => setSenha(event.target.value)}
+                required
+                className="h-12 w-full rounded-lg border border-brand-outline bg-white pr-12 pl-3 text-base outline-offset-2 focus-visible:outline-2 focus-visible:outline-brand-steel"
+              />
+              <button
+                type="button"
+                onClick={() => setMostrarSenha(!mostrarSenha)}
+                aria-label={mostrarSenha ? "Ocultar senha" : "Mostrar senha"}
+                className="absolute inset-y-0 right-0 grid w-12 cursor-pointer place-items-center rounded-lg text-brand-steel focus-visible:outline-2 focus-visible:outline-brand-steel"
+              >
+                {mostrarSenha ? <EyeOff size={20} /> : <Eye size={20} />}
+              </button>
+            </div>
           </div>
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="h-12 rounded bg-[#0b2545] hover:bg-[#134074] text-white font-headline font-bold text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-60"
-          >
-            <Lock className="w-4 h-4" />
-            {loading ? "AUTENTICANDO..." : "ENTRAR NO PORTAL ADMINISTRATIVO"}
+          {erro && <p role="alert" className="rounded-lg bg-[#fdf0ec] p-3 text-sm text-[#8e3225]">{erro}</p>}
+          <button type="submit" disabled={enviando || !login.trim() || !senha} className="min-h-12 cursor-pointer rounded-lg bg-brand-navy px-4 font-semibold text-brand-cream hover:bg-brand-steel focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-steel disabled:cursor-not-allowed disabled:bg-brand-tint disabled:text-brand-muted">
+            {enviando ? "Entrando…" : "Entrar"}
           </button>
-
-          <div className="pt-3 border-t border-[#e3e9ed] flex items-center justify-between text-xs text-[#44474e]">
-            <span className="font-mono-tech">Demo: admin@movseg.com.br</span>
-            <Link
-              href="/rastreio/MOV-SEC-8893-XP"
-              className="text-[#134074] font-semibold hover:underline"
-            >
-              Consulta Pública QR →
-            </Link>
-          </div>
         </form>
       </div>
-    </div>
+    </main>
   );
 }

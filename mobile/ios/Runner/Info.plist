@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Movseg Mobile</string>
+	<string>MovSeg</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -26,6 +26,14 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Fotografar ou filmar o móvel e a embalagem durante a conferência.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Associar o local da conferência ao registro de transporte ou entrega.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Gravar áudio ao filmar uma evidência.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Selecionar fotos ou vídeos para anexar ao registro.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

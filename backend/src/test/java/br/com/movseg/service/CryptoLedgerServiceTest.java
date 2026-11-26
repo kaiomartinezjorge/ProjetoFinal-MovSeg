@@ -1,16 +1,20 @@
 package br.com.movseg.service;
 
+import br.com.movseg.domain.entity.EvidenciaMidia;
 import br.com.movseg.domain.entity.MarcoRastreabilidade;
 import br.com.movseg.domain.entity.UnidadeMovel;
 import br.com.movseg.domain.entity.Usuario;
 import br.com.movseg.domain.enums.EtapaRastreabilidade;
 import br.com.movseg.domain.enums.PerfilUsuario;
 import br.com.movseg.domain.enums.ResultadoMarco;
+import br.com.movseg.domain.enums.TipoEvidencia;
 import org.junit.jupiter.api.Test;
 
+import java.math.BigInteger;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -62,5 +66,37 @@ class CryptoLedgerServiceTest {
         var auditoriaQuebrada = service.verificarCadeia(unidade, List.of(m1, m2));
         assertThat(auditoriaQuebrada.cadeiaIntegra()).isFalse();
         assertThat(auditoriaQuebrada.blocos().get(0).encadeamentoValido()).isFalse();
+    }
+
+    @Test
+    void deveDetectarRemocaoDeEvidenciaSelada() {
+        UnidadeMovel unidade = new UnidadeMovel();
+        unidade.setId(UUID.randomUUID());
+        Usuario responsavel = new Usuario();
+        responsavel.setId(UUID.randomUUID());
+        responsavel.setNome("Operador");
+        responsavel.setMatriculaOuClientId("OP-1");
+
+        MarcoRastreabilidade marco = new MarcoRastreabilidade();
+        marco.setId(UUID.randomUUID());
+        marco.setUnidadeMovel(unidade);
+        marco.setResponsavel(responsavel);
+        marco.setEtapa(EtapaRastreabilidade.FABRICACAO);
+        marco.setResultado(ResultadoMarco.APROVADO);
+        marco.setRegistradoEm(Instant.now());
+        marco.setHashIntegridadeAnterior(CryptoLedgerService.HASH_GENESIS);
+        marco.setHashVersao(2);
+        marco.setChecklistMetadados(Map.of("medicao", 1e21));
+
+        EvidenciaMidia evidencia = new EvidenciaMidia();
+        evidencia.setTipoEvidencia(TipoEvidencia.FOTO_PRODUTO);
+        evidencia.setHashSha256(service.calcularSha256Texto("foto"));
+        marco.getEvidencias().add(evidencia);
+        marco.setHashBloco(service.calcularHashBloco(marco));
+        marco.setChecklistMetadados(Map.of("medicao", new BigInteger("1000000000000000000000")));
+        assertThat(service.verificarCadeia(unidade, List.of(marco)).cadeiaIntegra()).isTrue();
+
+        marco.getEvidencias().clear();
+        assertThat(service.verificarCadeia(unidade, List.of(marco)).cadeiaIntegra()).isFalse();
     }
 }

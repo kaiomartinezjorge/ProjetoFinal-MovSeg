@@ -1,258 +1,267 @@
 import 'package:flutter/material.dart';
+
 import '../models/movseg_models.dart';
 import '../services/api_client.dart';
-import '../theme/deepsea_theme.dart';
+import '../widgets/movseg_logo.dart';
 import 'auditoria_hash_screen.dart';
-import 'checklist_entrega_screen.dart';
 import 'marcos_timeline_screen.dart';
 import 'novo_registro_screen.dart';
 
 class HomeShell extends StatefulWidget {
+  const HomeShell({super.key, required this.api, required this.onLogout});
+
   final MovSegApiClient api;
   final VoidCallback onLogout;
-
-  const HomeShell({super.key, required this.api, required this.onLogout});
 
   @override
   State<HomeShell> createState() => _HomeShellState();
 }
 
 class _HomeShellState extends State<HomeShell> {
-  int _tabIndex = 0;
-  List<UnidadeResumo> _unidades = [];
+  final _busca = TextEditingController();
+  List<UnidadeResumo>? _resultados;
   TimelineUnidade? _timeline;
-  bool _loading = true;
   String? _erro;
-  final _buscaCtrl = TextEditingController();
+  bool _ocupado = false;
+  int _aba = 0;
 
   @override
-  void initState() {
-    super.initState();
-    _carregarUnidades();
+  void dispose() {
+    _busca.dispose();
+    super.dispose();
   }
 
-  Future<void> _carregarUnidades({String? codigo}) async {
+  Future<void> _buscar() async {
+    final termo = _busca.text.trim();
+    if (termo.isEmpty || _ocupado) return;
+    FocusScope.of(context).unfocus();
     setState(() {
-      _loading = true;
+      _resultados = null;
+      _erro = null;
+      _ocupado = true;
+    });
+    try {
+      final unidades = await widget.api.listarUnidades(busca: termo);
+      if (mounted) setState(() => _resultados = unidades);
+    } catch (erro) {
+      if (mounted) setState(() => _erro = _mensagem(erro));
+    } finally {
+      if (mounted) setState(() => _ocupado = false);
+    }
+  }
+
+  Future<void> _abrir(String id, {int aba = 0}) async {
+    if (_ocupado) return;
+    setState(() {
+      _ocupado = true;
+      if (_timeline?.unidade.id != id) _timeline = null;
       _erro = null;
     });
     try {
-      final lista = await widget.api.listarUnidades();
-      _unidades = lista;
-      if (codigo != null && codigo.isNotEmpty) {
-        _timeline = await widget.api.buscarTimelinePorCodigo(codigo);
-      } else if (lista.isNotEmpty) {
-        final alvoId = _timeline?.unidade.id ?? lista.first.id;
-        _timeline = await widget.api.buscarTimeline(alvoId);
+      final timeline = await widget.api.buscarTimeline(id);
+      if (mounted) {
+        setState(() {
+          _timeline = timeline;
+          _aba = aba;
+        });
       }
-    } catch (e) {
-      _erro = e.toString().replaceFirst('Exception: ', '');
+    } catch (erro) {
+      if (mounted) {
+        if (_timeline == null) {
+          setState(() => _erro = _mensagem(erro));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(_mensagem(erro))),
+          );
+        }
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted) setState(() => _ocupado = false);
     }
   }
 
-  Future<void> _selecionarUnidade(String id) async {
-    setState(() => _loading = true);
-    try {
-      _timeline = await widget.api.buscarTimeline(id);
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
-  }
+  String _mensagem(Object erro) =>
+      erro.toString().replaceFirst('Exception: ', '');
 
   @override
   Widget build(BuildContext context) {
-    final user = widget.api.usuario;
-    const titles = [
-      'Marcos / Timeline',
-      'Novo Registro',
-      'Checklist Entrega',
-      'Auditoria Hash',
-    ];
-
+    final timeline = _timeline;
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Row(
-              children: [
-                Icon(Icons.circle, size: 8, color: DeepSeaColors.secondaryContainer),
-                SizedBox(width: 6),
-                Text(
-                  'ONLINE - LEDGER SEGURO',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: DeepSeaColors.secondaryContainer,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-            Text(
-              titles[_tabIndex],
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
+        title: const MovSegLogo(width: 78, height: 50),
         actions: [
-          IconButton(
-            tooltip: 'Atualizar',
-            icon: const Icon(Icons.sync_rounded),
-            onPressed: () => _carregarUnidades(),
-          ),
+          if (timeline != null)
+            IconButton(
+              icon: const Icon(Icons.refresh_rounded),
+              tooltip: 'Atualizar histórico',
+              onPressed: _ocupado
+                  ? null
+                  : () => _abrir(timeline.unidade.id, aba: _aba),
+            ),
           PopupMenuButton<String>(
-            icon: const Icon(Icons.person_pin_rounded),
-            onSelected: (v) async {
-              if (v == 'sair') {
-                await widget.api.sair();
-                widget.onLogout();
-              }
+            tooltip: 'Conta de trabalho',
+            icon: const Icon(Icons.account_circle_outlined),
+            onSelected: (_) async {
+              await widget.api.sair();
+              if (mounted) widget.onLogout();
             },
             itemBuilder: (_) => [
               PopupMenuItem(
                 enabled: false,
-                child: Text('${user?.nome ?? ""} (${user?.matriculaOuClientId ?? ""})'),
+                child: Text(widget.api.usuario?.nome ?? 'Conta de trabalho'),
               ),
-              const PopupMenuItem(value: 'sair', child: Text('Encerrar Sessão')),
+              const PopupMenuItem(value: 'sair', child: Text('Sair da conta')),
             ],
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Barra rápida de busca QR / Seleção de Unidade em Rota
-          Container(
-            color: DeepSeaColors.surfaceLow,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: Row(
+      body: SafeArea(
+        bottom: timeline == null,
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 720),
+            child: timeline == null ? _selecao() : _unidade(timeline),
+          ),
+        ),
+      ),
+      bottomNavigationBar: timeline == null
+          ? null
+          : NavigationBar(
+              selectedIndex: _aba,
+              onDestinationSelected: (indice) => setState(() => _aba = indice),
+              destinations: const [
+                NavigationDestination(
+                    icon: Icon(Icons.add_a_photo_outlined), label: 'Coleta'),
+                NavigationDestination(
+                    icon: Icon(Icons.timeline_rounded), label: 'Histórico'),
+                NavigationDestination(
+                    icon: Icon(Icons.verified_user_outlined),
+                    label: 'Auditoria'),
+              ],
+            ),
+    );
+  }
+
+  Widget _selecao() {
+    final tema = Theme.of(context);
+    final resultados = _resultados;
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Text('Selecionar unidade',
+            style: tema.textTheme.headlineMedium
+                ?.copyWith(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 8),
+        const Text(
+            'Encontre o móvel e confira a etiqueta antes de registrar a etapa.'),
+        const SizedBox(height: 20),
+        TextField(
+          controller: _busca,
+          enabled: !_ocupado,
+          textCapitalization: TextCapitalization.characters,
+          textInputAction: TextInputAction.search,
+          onChanged: (_) => setState(() {}),
+          onSubmitted: (_) => _buscar(),
+          decoration: const InputDecoration(
+            labelText: 'Etiqueta, série ou pedido',
+            prefixIcon: Icon(Icons.qr_code_2_rounded),
+          ),
+        ),
+        const SizedBox(height: 12),
+        FilledButton.icon(
+          onPressed: _ocupado || _busca.text.trim().isEmpty ? null : _buscar,
+          icon: const Icon(Icons.search_rounded),
+          label: const Text('Buscar unidades'),
+        ),
+        if (_ocupado) ...[
+          const SizedBox(height: 18),
+          const LinearProgressIndicator(semanticsLabel: 'Buscando unidade'),
+        ],
+        if (_erro != null) ...[
+          const SizedBox(height: 15),
+          Semantics(
+              liveRegion: true,
+              child: Text(_erro!,
+                  style: TextStyle(color: tema.colorScheme.error))),
+        ],
+        if (resultados != null && resultados.isEmpty)
+          const Padding(
+            padding: EdgeInsets.only(top: 18),
+            child: Text(
+                'Nenhuma unidade encontrada. Confira o código e tente novamente.'),
+          ),
+        for (final unidade in resultados ?? const <UnidadeResumo>[])
+          Card(
+            margin: const EdgeInsets.only(top: 10),
+            child: ListTile(
+              title: Text(unidade.produto.nome,
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle:
+                  Text('${unidade.codigoQr}\nPedido ${unidade.ordemProducao}'),
+              isThreeLine: true,
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: _ocupado ? null : () => _abrir(unidade.id),
+            ),
+          ),
+      ],
+    );
+  }
+
+  Widget _unidade(TimelineUnidade timeline) {
+    final unidade = timeline.unidade;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Card(
+            child: ListTile(
+              leading: const Icon(Icons.inventory_2_outlined),
+              title: Text(unidade.produto.nome,
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle:
+                  Text('${unidade.codigoQr} · Pedido ${unidade.ordemProducao}'),
+              trailing: IconButton(
+                tooltip: 'Trocar unidade',
+                icon: const Icon(Icons.swap_horiz_rounded),
+                onPressed: _ocupado
+                    ? null
+                    : () => setState(() {
+                          _timeline = null;
+                          _resultados = null;
+                          _erro = null;
+                          _busca.clear();
+                        }),
+              ),
+            ),
+          ),
+        ),
+        if (_ocupado)
+          const LinearProgressIndicator(
+              semanticsLabel: 'Atualizando histórico'),
+        Expanded(
+          child: AbsorbPointer(
+            absorbing: _ocupado,
+            child: IndexedStack(
+              index: _aba,
               children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 40,
-                    child: TextField(
-                      controller: _buscaCtrl,
-                      decoration: const InputDecoration(
-                        hintText: 'QR Code ou Lote (ex: MOV-SEC-8893-XP)',
-                        prefixIcon: Icon(Icons.qr_code_scanner, size: 18),
-                        contentPadding: EdgeInsets.symmetric(horizontal: 10),
-                        border: OutlineInputBorder(),
-                        filled: true,
-                        fillColor: Colors.white,
-                      ),
-                      onSubmitted: (v) => _carregarUnidades(codigo: v.trim()),
-                    ),
-                  ),
+                NovoRegistroScreen(
+                  key: ValueKey('${unidade.id}-${timeline.marcos.length}'),
+                  api: widget.api,
+                  timeline: timeline,
+                  onRegistrado: () => _abrir(unidade.id, aba: 1),
                 ),
-                const SizedBox(width: 8),
-                if (_unidades.isNotEmpty)
-                  DropdownButton<String>(
-                    value: _timeline?.unidade.id,
-                    underline: const SizedBox(),
-                    items: _unidades
-                        .map((u) => DropdownMenuItem(
-                              value: u.id,
-                              child: Text(
-                                u.codigoQr,
-                                style: const TextStyle(
-                                  fontFamily: 'monospace',
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ))
-                        .toList(),
-                    onChanged: (id) {
-                      if (id != null) _selecionarUnidade(id);
-                    },
-                  ),
+                MarcosTimelineScreen(
+                  timeline: timeline,
+                  api: widget.api,
+                  onRegistrarEntrega: () => setState(() => _aba = 0),
+                  onAuditarHash: () => setState(() => _aba = 2),
+                ),
+                AuditoriaHashScreen(api: widget.api, timeline: timeline),
               ],
             ),
           ),
-          Expanded(
-            child: _loading
-                ? const Center(child: CircularProgressIndicator())
-                : _erro != null
-                    ? Center(
-                        child: Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(_erro!, textAlign: TextAlign.center),
-                              const SizedBox(height: 12),
-                              ElevatedButton(
-                                onPressed: () => _carregarUnidades(),
-                                child: const Text('Tentar Novamente'),
-                              ),
-                            ],
-                          ),
-                        ),
-                      )
-                    : _timeline == null
-                        ? const Center(child: Text('Nenhuma unidade disponível.'))
-                        : IndexedStack(
-                            index: _tabIndex,
-                            children: [
-                              MarcosTimelineScreen(
-                                timeline: _timeline!,
-                                onRegistrarEntrega: () =>
-                                    setState(() => _tabIndex = 1),
-                                onAuditarHash: () =>
-                                    setState(() => _tabIndex = 3),
-                              ),
-                              NovoRegistroScreen(
-                                api: widget.api,
-                                timeline: _timeline!,
-                                onRegistrado: () async {
-                                  await _carregarUnidades();
-                                  if (mounted) setState(() => _tabIndex = 0);
-                                },
-                              ),
-                              ChecklistEntregaScreen(
-                                timeline: _timeline!,
-                                onIrParaRegistro: () =>
-                                    setState(() => _tabIndex = 1),
-                              ),
-                              AuditoriaHashScreen(
-                                api: widget.api,
-                                timeline: _timeline!,
-                              ),
-                            ],
-                          ),
-          ),
-        ],
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _tabIndex,
-        onDestinationSelected: (i) => setState(() => _tabIndex = i),
-        backgroundColor: DeepSeaColors.primaryContainer,
-        indicatorColor: DeepSeaColors.secondary,
-        labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-        destinations: const [
-          NavigationDestination(
-            icon: Icon(Icons.timeline_rounded, color: Colors.white70),
-            selectedIcon: Icon(Icons.timeline_rounded, color: Colors.white),
-            label: 'Marcos',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.add_a_photo_rounded, color: Colors.white70),
-            selectedIcon: Icon(Icons.add_a_photo_rounded, color: Colors.white),
-            label: 'Registro',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.checklist_rounded, color: Colors.white70),
-            selectedIcon: Icon(Icons.checklist_rounded, color: Colors.white),
-            label: 'Checklist',
-          ),
-          NavigationDestination(
-            icon: Icon(Icons.verified_user_rounded, color: Colors.white70),
-            selectedIcon: Icon(Icons.verified_user_rounded, color: Colors.white),
-            label: 'Hash',
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }

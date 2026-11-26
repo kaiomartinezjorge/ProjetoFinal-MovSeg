@@ -1,7 +1,8 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { QRCodeSVG } from "qrcode.react";
 import {
   CheckCircle2,
@@ -13,64 +14,80 @@ import {
 } from "lucide-react";
 import { AdminShell } from "@/components/AdminShell";
 import { api } from "@/lib/api";
+import { ETAPAS } from "@/lib/rastreabilidade";
 import type { AuditoriaLedger, UnidadeResumo } from "@/lib/types";
 
-export default function AuditoriaLedgerPage() {
+function AuditoriaLedger() {
+  const unidadeInicial = useSearchParams().get("unidade");
   const [unidades, setUnidades] = useState<UnidadeResumo[]>([]);
-  const [selectedId, setSelectedId] = useState<string>("");
+  const [selecao, setSelecao] = useState<string | null>(null);
   const [auditoria, setAuditoria] = useState<AuditoriaLedger | null>(null);
   const [copiado, setCopiado] = useState(false);
   const [validando, setValidando] = useState(false);
-
-  async function carregar() {
-    const lista = await api.listarUnidades();
-    setUnidades(lista);
-    if (lista.length > 0) {
-      setSelectedId(lista[0].id);
-      setAuditoria(await api.revalidarLedger(lista[0].id));
-    }
-  }
+  const [carregando, setCarregando] = useState(true);
+  const [erroLista, setErroLista] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+  const [revisao, setRevisao] = useState(0);
+  const id = selecao ?? unidadeInicial ?? unidades[0]?.id;
+  const unidade = unidades.find((item) => item.id === id);
+  const selectedId = unidade?.id;
 
   useEffect(() => {
-    carregar();
+    let ativo = true;
+    api.listarUnidades().then((lista) => {
+      if (ativo) setUnidades(lista);
+    }).catch(() => {
+      if (ativo) setErroLista("Não foi possível carregar as unidades.");
+    }).finally(() => {
+      if (ativo) setCarregando(false);
+    });
+    return () => { ativo = false; };
   }, []);
 
-  async function revalidar(id: string) {
+  useEffect(() => {
+    if (!selectedId) return;
+    let ativo = true;
     setValidando(true);
-    setSelectedId(id);
-    try {
-      setAuditoria(await api.revalidarLedger(id));
-    } finally {
-      setValidando(false);
-    }
-  }
+    setErro(null);
+    setAuditoria(null);
+    api.revalidarLedger(selectedId).then((resultado) => {
+      if (ativo) setAuditoria(resultado);
+    }).catch(() => {
+      if (ativo) setErro("Não foi possível verificar a integridade desta unidade.");
+    }).finally(() => {
+      if (ativo) setValidando(false);
+    });
+    return () => { ativo = false; };
+  }, [selectedId, revisao]);
 
   const publicUrl =
     typeof window !== "undefined" && auditoria
-      ? `${window.location.origin}/rastreio/${auditoria.codigoQr}`
+      ? `${window.location.origin}/rastreio/${encodeURIComponent(auditoria.codigoQr)}`
       : "";
+  const entregaLegada = unidade?.statusAtual === "ENTREGUE" && auditoria?.blocos.every((bloco) => bloco.etapa !== "POS_ENTREGA");
+  const totalEtapas = Object.keys(ETAPAS).length - (entregaLegada ? 1 : 0);
 
   return (
-    <AdminShell>
       <div className="flex flex-col gap-6">
-        <div className="bg-white rounded-xl p-6 border border-[#8da9c4]/30 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+        <div className="bg-white rounded-xl p-6 border border-brand-outline/30 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-xl bg-[#001026] text-[#b1c7f0] flex items-center justify-center shrink-0">
+            <div className="w-12 h-12 rounded-xl bg-brand-ink text-brand-line flex items-center justify-center shrink-0">
               <ShieldCheck className="w-7 h-7" />
             </div>
             <div>
-              <h1 className="font-headline text-2xl font-bold text-[#001026]">
+              <h1 className="font-headline text-2xl font-bold text-brand-ink">
                 Auditoria &amp; Ledger Criptográfico
               </h1>
               <div className="flex flex-wrap items-center gap-2 mt-1">
                 {unidades.map((u) => (
                   <button
                     key={u.id}
-                    onClick={() => revalidar(u.id)}
+                    onClick={() => setSelecao(u.id)}
+                    aria-pressed={selectedId === u.id}
                     className={`px-2.5 py-1 rounded font-mono-tech text-xs font-semibold ${
                       selectedId === u.id
-                        ? "bg-[#0b2545] text-white"
-                        : "bg-[#eef4f8] text-[#134074]"
+                        ? "bg-brand-navy text-white"
+                        : "bg-brand-fog text-brand-navy"
                     }`}
                   >
                     {u.codigoQr}
@@ -80,11 +97,11 @@ export default function AuditoriaLedgerPage() {
             </div>
           </div>
 
-          {auditoria && (
+          {selectedId && (
             <button
-              onClick={() => revalidar(auditoria.unidadeId)}
+              onClick={() => setRevisao((atual) => atual + 1)}
               disabled={validando}
-              className="h-12 px-5 rounded-lg bg-[#001026] hover:bg-[#0b2545] text-white font-headline text-sm font-bold flex items-center gap-2"
+              className="h-12 px-5 rounded-lg bg-brand-ink hover:bg-brand-navy text-white font-headline text-sm font-bold flex items-center gap-2"
             >
               <RefreshCw
                 className={`w-4 h-4 ${validando ? "animate-spin" : ""}`}
@@ -94,11 +111,15 @@ export default function AuditoriaLedgerPage() {
           )}
         </div>
 
-        {auditoria && (
+        {(erroLista || erro) && <p role="alert" className="rounded-xl bg-[#fbe9e6] p-4 text-[#993d30]">{erroLista || erro}</p>}
+        {carregando && <p role="status" className="text-brand-muted">Carregando unidades…</p>}
+        {!carregando && !erroLista && !selectedId && <p className="text-brand-muted">{id ? "A unidade solicitada não foi encontrada." : "Nenhuma unidade cadastrada."}</p>}
+
+        {auditoria && auditoria.unidadeId === selectedId && (
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              <div className="bg-white rounded-xl p-5 border border-[#8da9c4]/30">
-                <span className="font-mono-tech text-[10px] uppercase text-[#44474e]">
+              <div className="bg-white rounded-xl p-5 border border-brand-outline/30">
+                <span className="font-mono-tech text-[10px] uppercase text-brand-muted">
                   Integridade Geral
                 </span>
                 <p
@@ -109,50 +130,50 @@ export default function AuditoriaLedgerPage() {
                   {auditoria.cadeiaIntegra ? "100% Íntegra" : "Quebra Detectada"}
                 </p>
               </div>
-              <div className="bg-white rounded-xl p-5 border border-[#8da9c4]/30">
-                <span className="font-mono-tech text-[10px] uppercase text-[#44474e]">
+              <div className="bg-white rounded-xl p-5 border border-brand-outline/30">
+                <span className="font-mono-tech text-[10px] uppercase text-brand-muted">
                   Marcos Selados
                 </span>
-                <p className="font-headline text-2xl font-bold text-[#001026] mt-2">
-                  {auditoria.totalMarcos} / 6 Etapas
+                <p className="font-headline text-2xl font-bold text-brand-ink mt-2">
+                  {auditoria.totalMarcos} / {totalEtapas} Etapas
                 </p>
               </div>
-              <div className="bg-white rounded-xl p-5 border border-[#8da9c4]/30">
-                <span className="font-mono-tech text-[10px] uppercase text-[#44474e]">
+              <div className="bg-white rounded-xl p-5 border border-brand-outline/30">
+                <span className="font-mono-tech text-[10px] uppercase text-brand-muted">
                   Evidências Verificadas
                 </span>
-                <p className="font-headline text-2xl font-bold text-[#001026] mt-2">
+                <p className="font-headline text-2xl font-bold text-brand-ink mt-2">
                   {auditoria.totalEvidencias} Arquivos
                 </p>
               </div>
-              <div className="bg-white rounded-xl p-5 border border-[#8da9c4]/30">
-                <span className="font-mono-tech text-[10px] uppercase text-[#44474e]">
+              <div className="bg-white rounded-xl p-5 border border-brand-outline/30">
+                <span className="font-mono-tech text-[10px] uppercase text-brand-muted">
                   Merkle Root (SHA-256)
                 </span>
-                <p className="font-mono-tech text-xs font-bold text-[#134074] mt-2 break-all">
+                <p className="font-mono-tech text-xs font-bold text-brand-navy mt-2 break-all">
                   {auditoria.merkleRoot}
                 </p>
               </div>
             </div>
 
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-              <div className="xl:col-span-8 bg-white rounded-xl p-6 border border-[#8da9c4]/30 flex flex-col gap-4">
-                <h2 className="font-headline text-lg font-bold text-[#001026] flex items-center gap-2">
-                  <Link2 className="w-5 h-5 text-[#395f95]" />
+              <div className="xl:col-span-8 bg-white rounded-xl p-6 border border-brand-outline/30 flex flex-col gap-4">
+                <h2 className="font-headline text-lg font-bold text-brand-ink flex items-center gap-2">
+                  <Link2 className="w-5 h-5 text-brand-steel" />
                   Cadeia Linear de Blocos Imutáveis
                 </h2>
 
                 {auditoria.blocos.map((b) => (
                   <div
                     key={b.marcoId}
-                    className="p-4 rounded-xl bg-[#eef4f8] border border-[#8da9c4]/40 flex flex-col gap-2"
+                    className="p-4 rounded-xl bg-brand-fog border border-brand-outline/40 flex flex-col gap-2"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="w-7 h-7 rounded bg-[#001026] text-white font-mono-tech text-xs font-bold flex items-center justify-center">
+                        <span className="w-7 h-7 rounded bg-brand-ink text-white font-mono-tech text-xs font-bold flex items-center justify-center">
                           0{b.sequencia}
                         </span>
-                        <strong className="font-headline text-[#001026]">
+                        <strong className="font-headline text-brand-ink">
                           {b.etapa}
                         </strong>
                       </div>
@@ -174,16 +195,16 @@ export default function AuditoriaLedgerPage() {
 
                     <div className="bg-white p-3 rounded font-mono-tech text-[11px] flex flex-col gap-1">
                       <div className="break-all">
-                        <span className="text-[#44474e]">HASH BLOCO: </span>
-                        <strong className="text-[#001026]">
+                        <span className="text-brand-muted">HASH BLOCO: </span>
+                        <strong className="text-brand-ink">
                           {b.hashArmazenado}
                         </strong>
                       </div>
                       <div className="break-all">
-                        <span className="text-[#44474e]">PREV HASH: </span>
-                        <span className="text-[#395f95]">{b.hashAnterior}</span>
+                        <span className="text-brand-muted">PREV HASH: </span>
+                        <span className="text-brand-steel">{b.hashAnterior}</span>
                       </div>
-                      <div className="flex flex-wrap justify-between text-[#44474e] pt-1 border-t border-[#e3e9ed]">
+                      <div className="flex flex-wrap justify-between text-brand-muted pt-1 border-t border-brand-tint">
                         <span>{b.responsavel}</span>
                         <span>
                           {new Date(b.registradoEm).toLocaleString("pt-BR")}
@@ -194,23 +215,23 @@ export default function AuditoriaLedgerPage() {
                 ))}
               </div>
 
-              <div className="xl:col-span-4 bg-white rounded-xl p-6 border border-[#8da9c4]/30 flex flex-col gap-4">
-                <h2 className="font-headline text-lg font-bold text-[#001026]">
+              <div className="xl:col-span-4 bg-white rounded-xl p-6 border border-brand-outline/30 flex flex-col gap-4">
+                <h2 className="font-headline text-lg font-bold text-brand-ink">
                   Consulta Pública Independente (Sem Login)
                 </h2>
-                <p className="text-xs text-[#44474e]">
+                <p className="text-xs text-brand-muted">
                   Escaneie ou compartilhe o QR Code abaixo com o cliente final
                   para validar a integridade criptográfica e visualizar as
                   evidências fotográficas (com proteção LGPD).
                 </p>
-                <div className="p-4 rounded-xl bg-[#eef4f8] flex flex-col items-center gap-3">
+                <div className="p-4 rounded-xl bg-brand-fog flex flex-col items-center gap-3">
                   <QRCodeSVG
                     value={publicUrl || auditoria.codigoQr}
                     size={160}
                     bgColor="#ffffff"
                     fgColor="#0b2545"
                   />
-                  <span className="font-mono-tech text-xs font-bold text-[#001026]">
+                  <span className="font-mono-tech text-xs font-bold text-brand-ink">
                     {auditoria.codigoQr}
                   </span>
                 </div>
@@ -221,14 +242,14 @@ export default function AuditoriaLedgerPage() {
                       setCopiado(true);
                       setTimeout(() => setCopiado(false), 2000);
                     }}
-                    className="flex-1 h-10 rounded bg-[#e3e9ed] hover:bg-[#d5e3ff] text-[#134074] font-mono-tech text-xs font-semibold flex items-center justify-center gap-1.5"
+                    className="flex-1 h-10 rounded bg-brand-tint hover:bg-brand-tint text-brand-navy font-mono-tech text-xs font-semibold flex items-center justify-center gap-1.5"
                   >
                     <Copy className="w-3.5 h-3.5" />
                     {copiado ? "Link Copiado!" : "Copiar Link"}
                   </button>
                   <Link
-                    href={`/rastreio/${auditoria.codigoQr}`}
-                    className="flex-1 h-10 rounded bg-[#0b2545] text-white font-mono-tech text-xs font-semibold flex items-center justify-center"
+                    href={`/rastreio/${encodeURIComponent(auditoria.codigoQr)}`}
+                    className="flex-1 h-10 rounded bg-brand-navy text-white font-mono-tech text-xs font-semibold flex items-center justify-center"
                   >
                     Abrir Passaporte
                   </Link>
@@ -238,6 +259,15 @@ export default function AuditoriaLedgerPage() {
           </>
         )}
       </div>
+  );
+}
+
+export default function AuditoriaLedgerPage() {
+  return (
+    <AdminShell>
+      <Suspense fallback={<p role="status">Carregando auditoria…</p>}>
+        <AuditoriaLedger />
+      </Suspense>
     </AdminShell>
   );
 }

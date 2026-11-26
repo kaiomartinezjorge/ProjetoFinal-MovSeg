@@ -25,8 +25,10 @@ spring:
       max-request-size: 120MB
 
 movseg:
+  demo:
+    enabled: ${MOVSEG_DEMO_ENABLED:false}
   jwt:
-    secret: ${JWT_SECRET:movseg-chave-secreta-corporativa-matos-lopes-2026-sha256-segura}
+    secret: ${JWT_SECRET:}
     expiration-ms: 86400000
   storage:
     root-dir: ${STORAGE_DIR:./storage/evidences}

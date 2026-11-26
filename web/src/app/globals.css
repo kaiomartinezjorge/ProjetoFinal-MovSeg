@@ -1,25 +1,23 @@
 @import "tailwindcss";
 
-:root {
-  --surface: #f4fafe;
-  --surface-low: #eef4f8;
-  --surface-card: #ffffff;
-  --surface-high: #e3e9ed;
-  --primary: #001026;
-  --primary-container: #0b2545;
-  --secondary: #395f95;
-  --secondary-cobalt: #134074;
-  --glacial: #8da9c4;
-  --success: #2a9d8f;
-  --alert: #e76f51;
-  --error: #ba1a1a;
-  --text-main: #161c1f;
-  --text-muted: #44474e;
+@theme static {
+  --color-brand-ink: #0d1321;
+  --color-brand-navy: #1f2b42;
+  --color-brand-steel: #405a74;
+  --color-brand-slate: #768aa7;
+  --color-brand-cream: #eeebda;
+  --color-brand-paper: #f7f5eb;
+  --color-brand-fog: #f1f4f8;
+  --color-brand-tint: #e7ecf2;
+  --color-brand-line: #d4dce7;
+  --color-brand-outline: #a0afc3;
+  --color-brand-muted: #52647d;
+  --color-brand-light: #d6dfeb;
 }
 
 body {
-  background-color: var(--surface);
-  color: var(--text-main);
+  background-color: var(--color-brand-fog);
+  color: var(--color-brand-ink);
   font-family: var(--font-work-sans), system-ui, sans-serif;
 }
 
@@ -29,6 +27,30 @@ body {
 
 .font-mono-tech {
   font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+}
+
+.movseg-brand {
+  display: block;
+  flex: none;
+  width: 6.5rem;
+  height: 4.125rem;
+  overflow: hidden;
+  border-radius: 9px;
+  background: #020d1c;
+}
+
+.movseg-brand img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 67%;
+}
+
+@media (max-width: 560px) {
+  .movseg-brand {
+    width: 5.5rem;
+    height: 3.5rem;
+  }
 }
 
 @media print {

@@ -46,20 +46,21 @@ export function clearSession() {
   localStorage.removeItem(USER_KEY);
 }
 
-export function mediaUrl(path: string): string {
-  if (path.startsWith("http")) return path;
-  return `${API_BASE}${path}`;
+export class ApiError extends Error {
+  constructor(message: string, readonly status: number) {
+    super(message);
+  }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
+async function request<T>(path: string, init?: RequestInit, authenticated = true): Promise<T> {
+  const token = authenticated ? getToken() : null;
   const headers: Record<string, string> = {
     ...(init?.headers as Record<string, string>),
   };
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
   }
-  if (!(init?.body instanceof FormData) && !headers["Content-Type"]) {
+  if (init?.body && !(init.body instanceof FormData) && !headers["Content-Type"]) {
     headers["Content-Type"] = "application/json";
   }
 
@@ -77,7 +78,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       // ignore
     }
-    throw new Error(msg);
+    throw new ApiError(msg, res.status);
   }
   return (await res.json()) as T;
 }
@@ -141,12 +142,17 @@ export const api = {
       houveAvaria: boolean;
       tipoAvaria?: string;
       descricaoAvaria?: string;
-    }
-  ) =>
-    request(`/api/v1/unidades/${unidadeId}/marcos`, {
+    },
+    arquivo: File,
+  ) => {
+    const form = new FormData();
+    form.append("dados", JSON.stringify(payload));
+    form.append("arquivos", arquivo);
+    return request(`/api/v1/unidades/${unidadeId}/marcos-com-evidencias`, {
       method: "POST",
-      body: JSON.stringify(payload),
-    }),
+      body: form,
+    });
+  },
 
   listarProdutos: () => request<Produto[]>("/api/v1/produtos"),
 
@@ -191,6 +197,8 @@ export const api = {
 
   rastreioPublico: (codigoQr: string) =>
     request<PublicoRastreio>(
-      `/api/v1/publico/rastreio/${encodeURIComponent(codigoQr)}`
+      `/api/v1/publico/rastreio/${encodeURIComponent(codigoQr)}`,
+      undefined,
+      false,
     ),
 };

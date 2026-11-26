@@ -2,6 +2,7 @@ package br.com.movseg.controller;
 
 import br.com.movseg.dto.RastreabilidadeDtos;
 import br.com.movseg.service.UnidadeMovelService;
+import org.springframework.http.CacheControl;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -26,6 +27,8 @@ public class PublicoController {
     public ResponseEntity<RastreabilidadeDtos.PublicoRastreioResponse> rastrearPublico(
             @PathVariable String codigoQr
     ) {
-        return ResponseEntity.ok(unidadeService.buscarPassaportePublico(codigoQr));
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(unidadeService.buscarPassaportePublico(codigoQr));
     }
 }

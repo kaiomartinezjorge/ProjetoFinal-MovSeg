@@ -5,6 +5,7 @@ import br.com.movseg.domain.enums.OrigemAvaria;
 import br.com.movseg.domain.enums.StatusOcorrencia;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -15,7 +16,7 @@ public final class OcorrenciaDtos {
     public record CriarOcorrenciaRequest(
             @NotNull UUID unidadeMovelId,
             @NotNull UUID marcoDeteccaoId,
-            @NotBlank String tipoAvaria,
+            @NotBlank @Size(max = 80) String tipoAvaria,
             @NotBlank String descricaoAvaria,
             OrigemAvaria etapaResponsavelApurada
     ) {}

@@ -1,188 +1,198 @@
 import 'package:flutter/material.dart';
+
 import '../services/api_client.dart';
 import '../theme/deepsea_theme.dart';
+import '../widgets/movseg_logo.dart';
 
 class LoginScreen extends StatefulWidget {
-  final MovSegApiClient api;
-  final VoidCallback onAuthenticated;
-
   const LoginScreen({
     super.key,
     required this.api,
     required this.onAuthenticated,
   });
 
+  final MovSegApiClient api;
+  final VoidCallback onAuthenticated;
+
   @override
   State<LoginScreen> createState() => _LoginScreenState();
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _loginCtrl = TextEditingController(text: 'entregador@movseg.com.br');
-  final _senhaCtrl = TextEditingController(text: 'MovSeg@2026');
+  final _formKey = GlobalKey<FormState>();
+  final _loginCtrl = TextEditingController();
+  final _senhaCtrl = TextEditingController();
   bool _loading = false;
+  bool _mostrarSenha = false;
   String? _erro;
 
+  @override
+  void dispose() {
+    _loginCtrl.dispose();
+    _senhaCtrl.dispose();
+    super.dispose();
+  }
+
   Future<void> _submit() async {
+    if (_loading || !(_formKey.currentState?.validate() ?? false)) return;
+    FocusScope.of(context).unfocus();
     setState(() {
       _loading = true;
       _erro = null;
     });
     try {
       await widget.api.login(_loginCtrl.text.trim(), _senhaCtrl.text);
-      widget.onAuthenticated();
-    } catch (e) {
-      setState(() {
-        _erro = e.toString().replaceFirst('Exception: ', '');
-      });
+      if (mounted) widget.onAuthenticated();
+    } catch (erro) {
+      if (!mounted) return;
+      setState(() => _erro = erro.toString().replaceFirst('Exception: ', ''));
     } finally {
-      if (mounted) {
-        setState(() => _loading = false);
-      }
+      if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final tema = Theme.of(context);
     return Scaffold(
-      backgroundColor: DeepSeaColors.primaryContainer,
+      backgroundColor: DeepSeaColors.primary,
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Card(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16),
+        child: LayoutBuilder(
+          builder: (context, constraints) => SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 28),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: (constraints.maxHeight - 56)
+                    .clamp(0.0, double.infinity)
+                    .toDouble(),
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: DeepSeaColors.primaryContainer,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: const Icon(
-                            Icons.local_shipping_rounded,
-                            color: DeepSeaColors.secondaryContainer,
-                            size: 28,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'MovSeg Entregador',
-                                style: TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w800,
-                                  color: DeepSeaColors.primary,
-                                ),
-                              ),
-                              Text(
-                                'MÓVEIS MATOS & LOPES LTDA.',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w600,
-                                  color: DeepSeaColors.secondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: DeepSeaColors.surfaceLow,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(
-                          color: DeepSeaColors.glacialBlue.withValues(alpha: 0.4),
-                        ),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 440),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      const Align(
+                        alignment: Alignment.centerLeft,
+                        child: MovSegLogo(width: 118, height: 78),
                       ),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.camera_alt_rounded,
-                            size: 20,
-                            color: DeepSeaColors.secondaryCobalt,
-                          ),
-                          SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              'Canal oficial para fotografar e gravar vídeos dos móveis no transporte e entrega final.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: DeepSeaColors.onSurface,
-                              ),
+                      const SizedBox(height: 24),
+                      Container(
+                        padding: const EdgeInsets.all(22),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: AutofillGroup(
+                          child: Form(
+                            key: _formKey,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Semantics(
+                                  header: true,
+                                  child: Text(
+                                    'Acesso da equipe',
+                                    style:
+                                        tema.textTheme.headlineSmall?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: -0.6,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Entre para registrar fotos e acompanhar os móveis em cada etapa.',
+                                  style: tema.textTheme.bodyLarge?.copyWith(
+                                    color: DeepSeaColors.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 24),
+                                if (_erro != null) ...[
+                                  Semantics(
+                                    liveRegion: true,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(12),
+                                      decoration: BoxDecoration(
+                                        color: const Color(0xFFFBE9E6),
+                                        borderRadius: BorderRadius.circular(10),
+                                      ),
+                                      child: Text(
+                                        _erro!,
+                                        style: const TextStyle(
+                                            color: DeepSeaColors.error),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 16),
+                                ],
+                                TextFormField(
+                                  controller: _loginCtrl,
+                                  enabled: !_loading,
+                                  autofillHints: const [AutofillHints.username],
+                                  keyboardType: TextInputType.emailAddress,
+                                  textInputAction: TextInputAction.next,
+                                  autocorrect: false,
+                                  validator: (valor) =>
+                                      valor == null || valor.trim().isEmpty
+                                          ? 'Informe seu e-mail ou matrícula.'
+                                          : null,
+                                  decoration: const InputDecoration(
+                                    labelText: 'E-mail ou matrícula',
+                                    prefixIcon:
+                                        Icon(Icons.person_outline_rounded),
+                                  ),
+                                ),
+                                const SizedBox(height: 14),
+                                TextFormField(
+                                  controller: _senhaCtrl,
+                                  enabled: !_loading,
+                                  autofillHints: const [AutofillHints.password],
+                                  obscureText: !_mostrarSenha,
+                                  enableSuggestions: false,
+                                  autocorrect: false,
+                                  textInputAction: TextInputAction.done,
+                                  onFieldSubmitted: (_) => _submit(),
+                                  validator: (valor) =>
+                                      valor == null || valor.isEmpty
+                                          ? 'Informe sua senha.'
+                                          : null,
+                                  decoration: InputDecoration(
+                                    labelText: 'Senha',
+                                    prefixIcon:
+                                        const Icon(Icons.lock_outline_rounded),
+                                    suffixIcon: IconButton(
+                                      tooltip: _mostrarSenha
+                                          ? 'Ocultar senha'
+                                          : 'Mostrar senha',
+                                      onPressed: () => setState(
+                                          () => _mostrarSenha = !_mostrarSenha),
+                                      icon: Icon(_mostrarSenha
+                                          ? Icons.visibility_off_outlined
+                                          : Icons.visibility_outlined),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 22),
+                                ElevatedButton(
+                                  onPressed: _loading ? null : _submit,
+                                  child:
+                                      Text(_loading ? 'Entrando…' : 'Entrar'),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                    if (_erro != null) ...[
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFDAD6),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: Text(
-                          _erro!,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Color(0xFF93000A),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
+                      const SizedBox(height: 18),
+                      Text(
+                        'Móveis Matos & Lopes',
+                        style: tema.textTheme.bodyMedium
+                            ?.copyWith(color: DeepSeaColors.secondaryContainer),
+                        textAlign: TextAlign.center,
                       ),
                     ],
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _loginCtrl,
-                      decoration: const InputDecoration(
-                        labelText: 'E-mail ou Matrícula (#MOT-0994)',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextField(
-                      controller: _senhaCtrl,
-                      obscureText: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Senha de Acesso',
-                        border: OutlineInputBorder(),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    ElevatedButton.icon(
-                      onPressed: _loading ? null : _submit,
-                      icon: const Icon(Icons.verified_user_rounded),
-                      label: Text(
-                        _loading ? 'AUTENTICANDO...' : 'ENTRAR COMO ENTREGADOR',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Demo campo: entregador@movseg.com.br / MovSeg@2026',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: DeepSeaColors.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
               ),
             ),

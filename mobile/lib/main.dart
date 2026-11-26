@@ -33,7 +33,7 @@ class _MovSegAppState extends State<MovSegApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'MovSeg Entregador',
+      title: 'MovSeg',
       debugShowCheckedModeBanner: false,
       theme: buildDeepSeaTheme(),
       home: !_ready

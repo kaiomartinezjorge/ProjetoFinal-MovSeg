@@ -1,11 +1,11 @@
-import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+
+import '../models/etapas.dart';
 import '../models/movseg_models.dart';
 import '../services/api_client.dart';
-import '../theme/deepsea_theme.dart';
 
 class NovoRegistroScreen extends StatefulWidget {
   final MovSegApiClient api;
@@ -24,472 +24,600 @@ class NovoRegistroScreen extends StatefulWidget {
 }
 
 class _NovoRegistroScreenState extends State<NovoRegistroScreen> {
+  static const _capacidade = 100 * 1024 * 1024;
+  static const _limiteArquivos = 10;
+
   final _picker = ImagePicker();
-  final _localCtrl = TextEditingController(
-    text: 'Rodovia Presidente Dutra, KM 142 - Entrega em Rota',
-  );
+  final _localCtrl = TextEditingController();
   final _obsCtrl = TextEditingController();
   final _tipoAvariaCtrl = TextEditingController();
+  final _evidencias = <EvidenciaLocalPayload>[];
+  final _checklist = <String, bool>{};
 
-  String _etapaSelecionada = 'TRANSPORTE';
-  bool _houveAvaria = false;
-  bool _posicaoVerticalOk = true;
-  bool _lonasSemAtritoOk = true;
-  bool _lacreIntegroOk = true;
-  double? _latitude = -23.189240;
-  double? _longitude = -45.884120;
-  String _gpsStatus = '± 3m (GPS ativo)';
+  bool? _houveAvaria;
+  Position? _posicao;
+  String? _erroGps;
+  String? _erro;
+  bool _localizando = false;
+  bool _capturando = false;
   bool _enviando = false;
 
-  final List<EvidenciaLocalPayload> _evidencias = [];
+  EtapaColeta? get _etapa => proximaEtapa(widget.timeline);
+
+  bool get _ocupado => _enviando || _capturando || _localizando;
+
+  bool _mesmoRegistro(String id, EtapaColeta? etapa) =>
+      widget.timeline.unidade.id == id && _etapa == etapa;
 
   @override
-  void initState() {
-    super.initState();
-    _capturarGps();
+  void dispose() {
+    _localCtrl.dispose();
+    _obsCtrl.dispose();
+    _tipoAvariaCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant NovoRegistroScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.timeline.unidade.id != widget.timeline.unidade.id ||
+        proximaEtapa(oldWidget.timeline) != _etapa) {
+      _localCtrl.clear();
+      _obsCtrl.clear();
+      _tipoAvariaCtrl.clear();
+      _evidencias.clear();
+      _checklist.clear();
+      _houveAvaria = null;
+      _posicao = null;
+      _erroGps = null;
+      _erro = null;
+    }
   }
 
   Future<void> _capturarGps() async {
+    if (_ocupado) return;
+    final unidadeId = widget.timeline.unidade.id;
+    final etapa = _etapa;
+    setState(() {
+      _localizando = true;
+      _erroGps = null;
+    });
     try {
-      final perm = await Geolocator.checkPermission();
-      if (perm == LocationPermission.denied) {
-        await Geolocator.requestPermission();
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        throw const _FalhaColeta(
+            'Ative a localização no dispositivo e tente novamente.');
       }
-      final pos = await Geolocator.getCurrentPosition(
+      var permissao = await Geolocator.checkPermission();
+      if (permissao == LocationPermission.denied) {
+        permissao = await Geolocator.requestPermission();
+      }
+      if (permissao == LocationPermission.denied ||
+          permissao == LocationPermission.deniedForever) {
+        throw const _FalhaColeta(
+            'Permita o acesso à localização nas configurações do dispositivo.');
+      }
+      final posicao = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
-          timeLimit: Duration(seconds: 4),
+          timeLimit: Duration(seconds: 10),
         ),
       );
-      if (mounted) {
-        setState(() {
-          _latitude = pos.latitude;
-          _longitude = pos.longitude;
-          _gpsStatus = '± ${pos.accuracy.round()}m (GPS/GLONASS)';
-        });
+      if (mounted && _mesmoRegistro(unidadeId, etapa)) {
+        setState(() => _posicao = posicao);
+      }
+    } on _FalhaColeta catch (erro) {
+      if (mounted && _mesmoRegistro(unidadeId, etapa)) {
+        setState(() => _erroGps = erro.mensagem);
       }
     } catch (_) {
-      if (mounted) {
-        setState(() => _gpsStatus = 'Coordenadas de rota (fallback)');
+      if (mounted && _mesmoRegistro(unidadeId, etapa)) {
+        setState(() => _erroGps =
+            'Localização indisponível. Tente novamente ou descreva o local.');
       }
+    } finally {
+      if (mounted) setState(() => _localizando = false);
     }
   }
 
-  Future<void> _capturarFoto(ImageSource source) async {
-    final file = await _picker.pickImage(source: source, imageQuality: 85);
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    _adicionarMidia(
-      bytes: bytes,
-      filename: file.name,
-      mimeType: 'image/jpeg',
-      tipoEvidencia: _houveAvaria
-          ? 'FOTO_AVARIA'
-          : (_etapaSelecionada == 'RECEBIMENTO' ? 'FOTO_ENTREGA' : 'FOTO_CARGA'),
-      legenda: _houveAvaria
-          ? 'Foto de avaria em $_etapaSelecionada'
-          : 'Foto oficial ($_etapaSelecionada)',
-    );
-  }
-
-  Future<void> _gravarVideo(ImageSource source) async {
-    final file = await _picker.pickVideo(
-      source: source,
-      maxDuration: const Duration(seconds: 45),
-    );
-    if (file == null) return;
-    final bytes = await file.readAsBytes();
-    _adicionarMidia(
-      bytes: bytes,
-      filename: file.name.endsWith('.mp4') ? file.name : '${file.name}.mp4',
-      mimeType: 'video/mp4',
-      tipoEvidencia: _houveAvaria
-          ? 'VIDEO_AVARIA'
-          : (_etapaSelecionada == 'RECEBIMENTO'
-              ? 'VIDEO_ENTREGA'
-              : 'VIDEO_TRANSPORTE'),
-      legenda: 'Vídeo de vistoria ($_etapaSelecionada)',
-    );
-  }
-
-  void _adicionarMidia({
-    required Uint8List bytes,
-    required String filename,
-    required String mimeType,
-    required String tipoEvidencia,
-    required String legenda,
-  }) {
-    final hash = sha256.convert(bytes).toString();
+  Future<void> _capturarMidia(ImageSource source, {required bool video}) async {
+    if (_ocupado || _evidencias.length >= _limiteArquivos) return;
+    final unidadeId = widget.timeline.unidade.id;
+    final etapa = _etapa;
     setState(() {
-      _evidencias.add(EvidenciaLocalPayload(
-        bytes: bytes,
-        filename: filename,
-        mimeType: mimeType,
-        tipoEvidencia: tipoEvidencia,
-        legenda: legenda,
-        sha256: hash,
-      ));
+      _capturando = true;
+      _erro = null;
     });
+    try {
+      final arquivo = video
+          ? await _picker.pickVideo(
+              source: source, maxDuration: const Duration(seconds: 45))
+          : await _picker.pickImage(source: source, imageQuality: 85);
+      if (arquivo == null || !mounted || !_mesmoRegistro(unidadeId, etapa)) {
+        return;
+      }
+      final totalAtual = _evidencias.fold<int>(
+          0, (total, evidencia) => total + evidencia.bytes.length);
+      final tamanho = await arquivo.length();
+      if (tamanho == 0 || tamanho > _capacidade - totalAtual) {
+        throw const _FalhaColeta(
+            'Escolha arquivos válidos com até 100 MB no total.');
+      }
+      final mimeType = _mimeType(arquivo);
+      if (mimeType == null ||
+          !mimeType.startsWith(video ? 'video/' : 'image/')) {
+        throw const _FalhaColeta(
+            'Formato de mídia indisponível. Use uma foto JPG, PNG ou um vídeo MP4.');
+      }
+      final bytes = await arquivo.readAsBytes();
+      if (!mounted || !_mesmoRegistro(unidadeId, etapa)) return;
+      final evidencia = EvidenciaLocalPayload(
+        bytes: bytes,
+        filename: arquivo.name,
+        mimeType: mimeType,
+        tipoEvidencia: '',
+        legenda: '',
+        sha256: sha256.convert(bytes).toString(),
+      );
+      setState(() => _evidencias.add(evidencia));
+    } on _FalhaColeta catch (erro) {
+      if (mounted && _mesmoRegistro(unidadeId, etapa)) {
+        _mostrarErro(erro.mensagem);
+      }
+    } catch (_) {
+      if (mounted && _mesmoRegistro(unidadeId, etapa)) {
+        _mostrarErro(
+            'Não foi possível abrir a mídia. Verifique as permissões e tente novamente.');
+      }
+    } finally {
+      if (mounted) setState(() => _capturando = false);
+    }
   }
 
-  Future<void> _enviarMarco() async {
+  String? _mimeType(XFile arquivo) {
+    const formatos = {
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'webp': 'image/webp',
+      'avif': 'image/avif',
+      'heic': 'image/heic',
+      'heif': 'image/heif',
+      'bmp': 'image/bmp',
+      'mp4': 'video/mp4',
+      'webm': 'video/webm',
+      'mov': 'video/quicktime',
+      'm4v': 'video/x-m4v',
+      '3gp': 'video/3gpp',
+      'ogv': 'video/ogg',
+    };
+    final mime = arquivo.mimeType?.toLowerCase().split(';').first.trim();
+    if (formatos.containsValue(mime)) return mime;
+    return formatos[arquivo.name.toLowerCase().split('.').last];
+  }
+
+  EvidenciaLocalPayload _classificar(
+      EvidenciaLocalPayload evidencia, EtapaColeta etapa) {
+    final comAvaria = _houveAvaria == true;
+    final naEntrega =
+        etapa == EtapaColeta.recebimento || etapa == EtapaColeta.posEntrega;
+    final String tipo;
+    if (evidencia.isVideo) {
+      tipo = comAvaria
+          ? 'VIDEO_AVARIA'
+          : (naEntrega ? 'VIDEO_ENTREGA' : 'VIDEO_TRANSPORTE');
+    } else {
+      tipo = comAvaria
+          ? 'FOTO_AVARIA'
+          : switch (etapa) {
+              EtapaColeta.fabricacao || EtapaColeta.inspecao => 'FOTO_PRODUTO',
+              EtapaColeta.embalagem => 'FOTO_EMBALAGEM',
+              EtapaColeta.expedicao || EtapaColeta.transporte => 'FOTO_CARGA',
+              EtapaColeta.recebimento ||
+              EtapaColeta.posEntrega =>
+                'FOTO_ENTREGA',
+            };
+    }
+    final midia = evidencia.isVideo ? 'Vídeo' : 'Foto';
+    return EvidenciaLocalPayload(
+      bytes: evidencia.bytes,
+      filename: evidencia.filename,
+      mimeType: evidencia.mimeType,
+      tipoEvidencia: tipo,
+      legenda:
+          '$midia ${comAvaria ? 'de avaria' : 'da vistoria'} – ${etapa.titulo}',
+      sha256: evidencia.sha256,
+    );
+  }
+
+  void _mostrarErro(String mensagem) {
+    setState(() => _erro = mensagem);
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text(mensagem)));
+  }
+
+  Future<void> _enviarMarco(EtapaColeta etapa) async {
+    if (_ocupado || !etapa.permite(widget.api.usuario?.perfil)) return;
     if (_evidencias.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Capture ao menos 1 foto ou vídeo do móvel antes de gerar o hash imutável.',
-          ),
-        ),
-      );
+      _mostrarErro('Adicione pelo menos uma foto ou vídeo.');
+      return;
+    }
+    final houveAvaria = _houveAvaria;
+    final unidadeId = widget.timeline.unidade.id;
+    if (houveAvaria == null) {
+      _mostrarErro('Informe a condição do móvel antes de enviar.');
+      return;
+    }
+    final tipoAvaria = _tipoAvariaCtrl.text.trim();
+    final observacao = _obsCtrl.text.trim();
+    if (houveAvaria && (tipoAvaria.isEmpty || observacao.isEmpty)) {
+      _mostrarErro('Informe o tipo de avaria e descreva o que foi encontrado.');
       return;
     }
 
-    setState(() => _enviando = true);
+    setState(() {
+      _enviando = true;
+      _erro = null;
+    });
     try {
       await widget.api.registrarMarcoComEvidencias(
-        unidadeId: widget.timeline.unidade.id,
-        etapa: _etapaSelecionada,
-        resultado: _houveAvaria ? 'REPROVADO' : 'APROVADO',
+        unidadeId: unidadeId,
+        etapa: etapa.codigo,
+        resultado: houveAvaria
+            ? 'REPROVADO'
+            : (_checklist.containsValue(false)
+                ? 'APROVADO_COM_RESSALVA'
+                : 'APROVADO'),
         localDescricao: _localCtrl.text.trim(),
-        observacoes: _obsCtrl.text.trim(),
-        checklistMetadados: {
-          'posicao_vertical': _posicaoVerticalOk,
-          'lonas_sem_atrito': _lonasSemAtritoOk,
-          'lacre_integro': _lacreIntegroOk,
-          'houve_impacto': _houveAvaria,
-        },
-        latitude: _latitude,
-        longitude: _longitude,
-        houveAvaria: _houveAvaria,
-        tipoAvaria: _houveAvaria
-            ? (_tipoAvariaCtrl.text.trim().isEmpty
-                ? 'Avaria reportada pelo entregador'
-                : _tipoAvariaCtrl.text.trim())
-            : null,
-        descricaoAvaria: _houveAvaria ? _obsCtrl.text.trim() : null,
-        evidencias: _evidencias,
+        observacoes: observacao,
+        checklistMetadados: {..._checklist, 'houve_avaria': houveAvaria},
+        latitude: _posicao?.latitude,
+        longitude: _posicao?.longitude,
+        houveAvaria: houveAvaria,
+        tipoAvaria: houveAvaria ? tipoAvaria : null,
+        descricaoAvaria: houveAvaria ? observacao : null,
+        evidencias: _evidencias
+            .map((evidencia) => _classificar(evidencia, etapa))
+            .toList(),
       );
-
-      if (mounted) {
+      if (mounted && _mesmoRegistro(unidadeId, etapa)) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: DeepSeaColors.success,
-            content: Text(
-              'Marco $_etapaSelecionada selado no ledger SHA-256!',
-            ),
-          ),
+          SnackBar(content: Text('${etapa.titulo} registrada com sucesso.')),
         );
         widget.onRegistrado();
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: DeepSeaColors.error,
-            content: Text(e.toString().replaceFirst('Exception: ', '')),
-          ),
-        );
+    } catch (erro) {
+      if (mounted && _mesmoRegistro(unidadeId, etapa)) {
+        _mostrarErro(erro.toString().replaceFirst('Exception: ', ''));
       }
     } finally {
       if (mounted) setState(() => _enviando = false);
     }
   }
 
+  Map<String, String> _itens(EtapaColeta etapa) {
+    return switch (etapa) {
+      EtapaColeta.fabricacao => {
+          'pecas_conferidas': 'Peças e componentes conferidos',
+          'acabamento_integro': 'Acabamento sem danos aparentes',
+        },
+      EtapaColeta.inspecao => {
+          'acabamento_integro': 'Acabamento sem danos aparentes',
+          for (final item in widget.timeline.unidade.produto.checklistPadrao)
+            if (item.codigo.isNotEmpty && item.item.isNotEmpty)
+              'produto_${item.codigo}': item.item,
+        },
+      EtapaColeta.embalagem => {
+          'protecao_quinas': 'Proteções e cantoneiras aplicadas',
+          'lacre_integro': 'Embalagem e lacre íntegros',
+        },
+      EtapaColeta.expedicao => {
+          'volumes_conferidos': 'Volumes e etiquetas conferidos',
+          'carga_fixada': 'Carga protegida e fixada',
+        },
+      EtapaColeta.transporte => {
+          'carga_fixada': 'Carga protegida e fixada',
+          'lacre_integro': 'Embalagem e lacre íntegros',
+        },
+      EtapaColeta.recebimento => {
+          'volumes_conferidos': 'Volumes conferidos na chegada',
+          'lacre_integro': 'Embalagem e lacre íntegros',
+        },
+      EtapaColeta.posEntrega => {
+          'volumes_entregues': 'Volumes entregues no destino',
+          'condicao_movel_conferida':
+              'Condição do móvel conferida após a descarga',
+        },
+    };
+  }
+
+  String _orientacao(EtapaColeta etapa) => switch (etapa) {
+        EtapaColeta.fabricacao =>
+          'Fotografe as peças e o acabamento ao concluir a produção.',
+        EtapaColeta.inspecao =>
+          'Fotografe o móvel e os pontos verificados na inspeção.',
+        EtapaColeta.embalagem =>
+          'Fotografe os volumes, as proteções e o lacre.',
+        EtapaColeta.expedicao =>
+          'Fotografe a carga e a embalagem antes da saída da fábrica.',
+        EtapaColeta.transporte =>
+          'Fotografe a condição da carga durante a vistoria antes da entrega.',
+        EtapaColeta.recebimento =>
+          'Fotografe os volumes na chegada ao cliente, antes da descarga.',
+        EtapaColeta.posEntrega =>
+          'Fotografe o móvel após a descarga, incluindo eventuais avarias.',
+      };
+
+  String _responsavel(EtapaColeta etapa) => switch (etapa) {
+        EtapaColeta.fabricacao ||
+        EtapaColeta.embalagem =>
+          'a equipe da fábrica',
+        EtapaColeta.inspecao => 'a equipe de inspeção',
+        EtapaColeta.expedicao => 'a equipe da fábrica ou o entregador',
+        EtapaColeta.transporte ||
+        EtapaColeta.recebimento ||
+        EtapaColeta.posEntrega =>
+          'o entregador',
+      };
+
   @override
   Widget build(BuildContext context) {
-    final u = widget.timeline.unidade;
+    final unidade = widget.timeline.unidade;
+    final etapa = _etapa;
+    final podeRegistrar =
+        etapa != null && etapa.permite(widget.api.usuario?.perfil);
+    final tema = Theme.of(context);
+    final podeCapturar = !_ocupado && _evidencias.length < _limiteArquivos;
+    final itens = etapa == null ? const <String, String>{} : _itens(etapa);
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
       children: [
-        const Text(
-          'REGISTRAR NOVO MARCO OPERACIONAL',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-            color: DeepSeaColors.primary,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Text(
-          '${u.produto.nome} • QR: ${u.codigoQr}',
-          style: const TextStyle(
-            fontSize: 12,
-            color: DeepSeaColors.onSurfaceVariant,
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        // Seletor de Etapa do Entregador (5 ou 6)
-        Row(
-          children: [
-            Expanded(
-              child: _EtapaButton(
-                label: '5. Transporte',
-                icon: Icons.local_shipping_rounded,
-                selected: _etapaSelecionada == 'TRANSPORTE',
-                onTap: () => setState(() => _etapaSelecionada = 'TRANSPORTE'),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: _EtapaButton(
-                label: '6. Recebimento',
-                icon: Icons.home_work_rounded,
-                selected: _etapaSelecionada == 'RECEBIMENTO',
-                onTap: () => setState(() => _etapaSelecionada = 'RECEBIMENTO'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-
-        // Telemetria GPS
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(14),
+        Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 620),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'TELEMETRIA IMUTÁVEL DE CAMPO',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w700,
-                        color: DeepSeaColors.secondary,
-                      ),
-                    ),
-                    Text(
-                      _gpsStatus,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'GPS: ${_latitude?.toStringAsFixed(6)}, ${_longitude?.toStringAsFixed(6)}',
-                  style: const TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
+                _PainelRegistro(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Pedido ${unidade.ordemProducao}',
+                          style: tema.textTheme.labelLarge),
+                      const SizedBox(height: 5),
+                      Text(etapa?.titulo ?? 'Coleta concluída',
+                          style: tema.textTheme.headlineSmall
+                              ?.copyWith(fontWeight: FontWeight.w800)),
+                      const SizedBox(height: 5),
+                      Text(unidade.produto.nome),
+                      Text('QR ${unidade.codigoQr}',
+                          style: tema.textTheme.bodySmall),
+                      const SizedBox(height: 12),
+                      if (etapa == null)
+                        const Text(
+                            'Todos os pontos de coleta estão registrados. Consulte o histórico do pedido.')
+                      else if (!podeRegistrar)
+                        Text(
+                            'A próxima etapa precisa ser registrada por ${_responsavel(etapa)}. Acompanhe o histórico e retorne após esse registro.')
+                      else
+                        Text(_orientacao(etapa)),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _localCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Local / Endereço da Ocorrência',
-                    border: OutlineInputBorder(),
-                    isDense: true,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 14),
-
-        // Captura Oficial de Fotos & Vídeos
-        const Text(
-          'EVIDÊNCIAS FOTOGRÁFICAS E VÍDEOS (OBRIGATÓRIO)',
-          style: TextStyle(
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-            color: DeepSeaColors.primary,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: DeepSeaColors.primaryContainer,
-                  minimumSize: const Size.fromHeight(48),
-                ),
-                onPressed: () => _capturarFoto(ImageSource.camera),
-                icon: const Icon(Icons.photo_camera_rounded),
-                label: const Text('Foto Câmera'),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: ElevatedButton.icon(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: DeepSeaColors.secondaryCobalt,
-                  minimumSize: const Size.fromHeight(48),
-                ),
-                onPressed: () => _gravarVideo(ImageSource.camera),
-                icon: const Icon(Icons.videocam_rounded),
-                label: const Text('Gravar Vídeo'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _capturarFoto(ImageSource.gallery),
-                icon: const Icon(Icons.photo_library_outlined, size: 18),
-                label: const Text('Foto Galeria'),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: () => _gravarVideo(ImageSource.gallery),
-                icon: const Icon(Icons.video_library_outlined, size: 18),
-                label: const Text('Vídeo Galeria'),
-              ),
-            ),
-          ],
-        ),
-
-        if (_evidencias.isNotEmpty) ...[
-          const SizedBox(height: 12),
-          ..._evidencias.asMap().entries.map((entry) {
-            final idx = entry.key;
-            final ev = entry.value;
-            return Card(
-              margin: const EdgeInsets.only(bottom: 8),
-              child: ListTile(
-                leading: ev.isVideo
-                    ? const CircleAvatar(
-                        backgroundColor: DeepSeaColors.primaryContainer,
-                        child: Icon(Icons.videocam, color: Colors.white),
-                      )
-                    : ClipRRect(
-                        borderRadius: BorderRadius.circular(6),
-                        child: Image.memory(
-                          ev.bytes,
-                          width: 48,
-                          height: 48,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                title: Text(
-                  '${ev.tipoEvidencia} (${(ev.bytes.length / 1024).toStringAsFixed(1)} KB)',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                subtitle: Text(
-                  'SHA-256: ${ev.sha256.substring(0, 18)}...',
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 10),
-                ),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline, color: DeepSeaColors.error),
-                  onPressed: () => setState(() => _evidencias.removeAt(idx)),
-                ),
-              ),
-            );
-          }),
-        ],
-        const SizedBox(height: 14),
-
-        // Checklist Rápido de Transporte/Entrega
-        Card(
-          child: Column(
-            children: [
-              SwitchListTile(
-                title: const Text('Posição vertical com cantoneiras'),
-                value: _posicaoVerticalOk,
-                onChanged: (v) => setState(() => _posicaoVerticalOk = v),
-              ),
-              SwitchListTile(
-                title: const Text('Lonas e mantas sem atrito direto'),
-                value: _lonasSemAtritoOk,
-                onChanged: (v) => setState(() => _lonasSemAtritoOk = v),
-              ),
-              SwitchListTile(
-                title: const Text('Lacre térmico / embalagem íntegros'),
-                value: _lacreIntegroOk,
-                onChanged: (v) => setState(() => _lacreIntegroOk = v),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-
-        // Toggle Avaria
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Houve impacto ou dano aparente à carga?',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ChoiceChip(
-                        label: const Text('NÃO (Sem Avarias)'),
-                        selected: !_houveAvaria,
-                        selectedColor: DeepSeaColors.success.withValues(alpha: 0.2),
-                        onSelected: (_) => setState(() => _houveAvaria = false),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ChoiceChip(
-                        label: const Text('SIM (Divergência)'),
-                        selected: _houveAvaria,
-                        selectedColor: DeepSeaColors.alert.withValues(alpha: 0.25),
-                        onSelected: (_) => setState(() => _houveAvaria = true),
-                      ),
-                    ),
-                  ],
-                ),
-                if (_houveAvaria) ...[
+                if (etapa != null && podeRegistrar) ...[
                   const SizedBox(height: 10),
-                  TextField(
-                    controller: _tipoAvariaCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Tipo da Avaria (ex: Quina amassada)',
-                      border: OutlineInputBorder(),
+                  _PainelRegistro(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Fotos e vídeos',
+                            style: tema.textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 5),
+                        Text(
+                            '${_evidencias.length}/$_limiteArquivos arquivos · mínimo 1 · até 100 MB'),
+                        const SizedBox(height: 12),
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          children: [
+                            FilledButton.icon(
+                              onPressed: podeCapturar
+                                  ? () => _capturarMidia(ImageSource.camera,
+                                      video: false)
+                                  : null,
+                              icon: const Icon(Icons.photo_camera_outlined),
+                              label: const Text('Tirar foto'),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: podeCapturar
+                                  ? () => _capturarMidia(ImageSource.camera,
+                                      video: true)
+                                  : null,
+                              icon: const Icon(Icons.videocam_outlined),
+                              label: const Text('Gravar vídeo'),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: podeCapturar
+                                  ? () => _capturarMidia(ImageSource.gallery,
+                                      video: false)
+                                  : null,
+                              icon: const Icon(Icons.photo_library_outlined),
+                              label: const Text('Escolher foto'),
+                            ),
+                            OutlinedButton.icon(
+                              onPressed: podeCapturar
+                                  ? () => _capturarMidia(ImageSource.gallery,
+                                      video: true)
+                                  : null,
+                              icon: const Icon(Icons.video_library_outlined),
+                              label: const Text('Escolher vídeo'),
+                            ),
+                          ],
+                        ),
+                        if (_capturando) ...[
+                          const SizedBox(height: 12),
+                          const LinearProgressIndicator(),
+                        ],
+                        for (final (indice, evidencia) in _evidencias.indexed)
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: SizedBox.square(
+                              dimension: 42,
+                              child: evidencia.isVideo
+                                  ? const Icon(Icons.videocam_outlined)
+                                  : ClipRRect(
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: Image.memory(
+                                        evidencia.bytes,
+                                        fit: BoxFit.cover,
+                                        cacheWidth: 128,
+                                        errorBuilder: (_, __, ___) =>
+                                            const Icon(Icons.image_outlined),
+                                      ),
+                                    ),
+                            ),
+                            title: Text(evidencia.filename,
+                                maxLines: 1, overflow: TextOverflow.ellipsis),
+                            subtitle: Text(
+                                '${(evidencia.bytes.length / 1024).toStringAsFixed(0)} KB'),
+                            trailing: IconButton(
+                              tooltip: 'Remover arquivo',
+                              onPressed: _ocupado
+                                  ? null
+                                  : () => setState(
+                                      () => _evidencias.removeAt(indice)),
+                              icon: const Icon(Icons.close),
+                            ),
+                          ),
+                      ],
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  _PainelRegistro(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Condição do móvel',
+                            style: tema.textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 8),
+                        _EscolhaBinaria(
+                          valor: _houveAvaria,
+                          positivo: 'Com avaria',
+                          negativo: 'Sem avaria',
+                          onChanged: _ocupado
+                              ? null
+                              : (valor) => setState(() => _houveAvaria = valor),
+                        ),
+                        if (_houveAvaria == true) ...[
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: _tipoAvariaCtrl,
+                            enabled: !_ocupado,
+                            maxLength: 80,
+                            decoration: const InputDecoration(
+                                labelText: 'Tipo de avaria',
+                                hintText: 'Ex.: quina amassada'),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _obsCtrl,
+                          enabled: !_ocupado,
+                          minLines: 2,
+                          maxLines: 4,
+                          decoration: InputDecoration(
+                              labelText: _houveAvaria == true
+                                  ? 'Descrição da avaria'
+                                  : 'Observações (opcional)'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _PainelRegistro(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Checklist da etapa',
+                            style: tema.textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 5),
+                        const Text('Responda os itens que você conferiu.'),
+                        for (final item in itens.entries) ...[
+                          const SizedBox(height: 12),
+                          Text(item.value),
+                          const SizedBox(height: 4),
+                          _EscolhaBinaria(
+                            valor: _checklist[item.key],
+                            positivo: 'Conforme',
+                            negativo: 'Divergente',
+                            onChanged: _ocupado
+                                ? null
+                                : (valor) => setState(
+                                    () => _checklist[item.key] = valor),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _PainelRegistro(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Local da vistoria',
+                            style: tema.textTheme.titleMedium
+                                ?.copyWith(fontWeight: FontWeight.w700)),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _localCtrl,
+                          enabled: !_ocupado,
+                          maxLength: 200,
+                          decoration: const InputDecoration(
+                              labelText: 'Descreva o local (opcional)'),
+                        ),
+                        if (etapa.emCampo) ...[
+                          OutlinedButton.icon(
+                            onPressed: _ocupado ? null : _capturarGps,
+                            icon: const Icon(Icons.my_location),
+                            label: Text(_localizando
+                                ? 'Localizando…'
+                                : (_posicao == null
+                                    ? 'Adicionar localização GPS'
+                                    : 'Atualizar localização GPS')),
+                          ),
+                          if (_posicao != null)
+                            Text(
+                                'Localização capturada (± ${_posicao!.accuracy.round()} m).'),
+                          if (_erroGps != null)
+                            Text(_erroGps!,
+                                style:
+                                    TextStyle(color: tema.colorScheme.error)),
+                        ],
+                      ],
+                    ),
+                  ),
+                  if (_erro != null) ...[
+                    const SizedBox(height: 12),
+                    Text(_erro!,
+                        style: TextStyle(color: tema.colorScheme.error)),
+                  ],
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: _ocupado ? null : () => _enviarMarco(etapa),
+                    icon: _enviando
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.cloud_upload_outlined),
+                    label: Text(
+                        _enviando ? 'Enviando evidências…' : 'Registrar etapa'),
                   ),
                 ],
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _obsCtrl,
-                  maxLines: 3,
-                  decoration: const InputDecoration(
-                    labelText: 'Observações da entrega / vistoria',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
               ],
             ),
-          ),
-        ),
-        const SizedBox(height: 16),
-
-        ElevatedButton.icon(
-          style: ElevatedButton.styleFrom(
-            backgroundColor:
-                _houveAvaria ? DeepSeaColors.error : DeepSeaColors.primary,
-          ),
-          onPressed: _enviando ? null : _enviarMarco,
-          icon: const Icon(Icons.verified_user_rounded),
-          label: Text(
-            _enviando
-                ? 'SELANDO HASH SHA-256...'
-                : (_houveAvaria
-                    ? 'RELATAR DIVERGÊNCIA E SELAR HASH'
-                    : 'CONFIRMAR E GERAR HASH IMUTÁVEL'),
           ),
         ),
       ],
@@ -497,60 +625,54 @@ class _NovoRegistroScreenState extends State<NovoRegistroScreen> {
   }
 }
 
-class _EtapaButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final bool selected;
-  final VoidCallback onTap;
+class _PainelRegistro extends StatelessWidget {
+  final Widget child;
+  const _PainelRegistro({required this.child});
 
-  const _EtapaButton({
-    required this.label,
-    required this.icon,
-    required this.selected,
-    required this.onTap,
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: EdgeInsets.zero,
+      child: Padding(padding: const EdgeInsets.all(16), child: child),
+    );
+  }
+}
+
+class _EscolhaBinaria extends StatelessWidget {
+  final bool? valor;
+  final String positivo;
+  final String negativo;
+  final ValueChanged<bool>? onChanged;
+
+  const _EscolhaBinaria({
+    required this.valor,
+    required this.positivo,
+    required this.negativo,
+    required this.onChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        height: 52,
-        decoration: BoxDecoration(
-          color: selected
-              ? DeepSeaColors.primaryContainer
-              : DeepSeaColors.surfaceHigh,
-          borderRadius: BorderRadius.circular(10),
+    return Wrap(
+      spacing: 8,
+      runSpacing: 4,
+      children: [
+        ChoiceChip(
+          label: Text(negativo),
+          selected: valor == false,
+          onSelected: onChanged == null ? null : (_) => onChanged!(false),
         ),
-        padding: const EdgeInsets.symmetric(horizontal: 12),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              size: 18,
-              color: selected
-                  ? DeepSeaColors.secondaryContainer
-                  : DeepSeaColors.onSurfaceVariant,
-            ),
-            const SizedBox(width: 6),
-            Flexible(
-              child: Text(
-                label,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: selected
-                      ? DeepSeaColors.secondaryContainer
-                      : DeepSeaColors.onSurface,
-                ),
-              ),
-            ),
-          ],
+        ChoiceChip(
+          label: Text(positivo),
+          selected: valor == true,
+          onSelected: onChanged == null ? null : (_) => onChanged!(true),
         ),
-      ),
+      ],
     );
   }
+}
+
+class _FalhaColeta implements Exception {
+  final String mensagem;
+  const _FalhaColeta(this.mensagem);
 }

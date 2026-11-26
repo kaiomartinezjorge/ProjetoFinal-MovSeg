@@ -6,6 +6,7 @@ public enum StatusUnidade {
     EMBALADO,
     EXPEDIDO,
     EM_TRANSPORTE,
+    EM_RECEBIMENTO,
     ENTREGUE,
     AVARIADO
 }

@@ -3,7 +3,10 @@ package br.com.movseg.dto;
 import br.com.movseg.domain.enums.EtapaRastreabilidade;
 import br.com.movseg.domain.enums.ResultadoMarco;
 import br.com.movseg.domain.enums.TipoEvidencia;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -15,15 +18,17 @@ public final class RastreabilidadeDtos {
     private RastreabilidadeDtos() {}
 
     public record RegistrarMarcoRequest(
-            @NotNull EtapaRastreabilidade etapa,
-            @NotNull ResultadoMarco resultado,
-            String localDescricao,
+            @NotNull(message = "Informe a etapa do registro.") EtapaRastreabilidade etapa,
+            @NotNull(message = "Informe o resultado da vistoria.") ResultadoMarco resultado,
+            @Size(max = 200, message = "O local deve ter até 200 caracteres.") String localDescricao,
             String observacoes,
             Map<String, Object> checklistMetadados,
-            BigDecimal latitude,
-            BigDecimal longitude,
+            @DecimalMin(value = "-90", message = "Latitude inválida.")
+            @DecimalMax(value = "90", message = "Latitude inválida.") BigDecimal latitude,
+            @DecimalMin(value = "-180", message = "Longitude inválida.")
+            @DecimalMax(value = "180", message = "Longitude inválida.") BigDecimal longitude,
             boolean houveAvaria,
-            String tipoAvaria,
+            @Size(max = 80, message = "O tipo de avaria deve ter até 80 caracteres.") String tipoAvaria,
             String descricaoAvaria
     ) {}
 
@@ -92,17 +97,16 @@ public final class RastreabilidadeDtos {
 
     public record PublicoRastreioResponse(
             String codigoQr,
-            String numeroSerie,
-            String loteFabricacao,
-            String chainId,
             String produtoNome,
-            String produtoSku,
-            String linhaProducao,
-            String destinoCidade,
-            String clienteMascarado,
             String statusAtual,
             boolean cadeiaIntegra,
-            String merkleRoot,
-            List<MarcoResponse> marcos
+            List<MarcoPublicoResponse> marcos
+    ) {}
+
+    public record MarcoPublicoResponse(
+            EtapaRastreabilidade etapa,
+            int ordemEtapa,
+            ResultadoMarco resultado,
+            Instant registradoEm
     ) {}
 }

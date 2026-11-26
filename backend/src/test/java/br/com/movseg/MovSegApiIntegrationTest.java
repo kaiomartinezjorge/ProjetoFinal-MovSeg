@@ -1,6 +1,5 @@
 package br.com.movseg;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -15,8 +14,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
-import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -46,14 +45,19 @@ class MovSegApiIntegrationTest {
     @Test
     @Order(1)
     void deveConsultarPassaportePublicoComLgpdELedgerIntegro() throws Exception {
-        String resp = mockMvc.perform(get("/api/v1/publico/rastreio/MOV-SEC-8893-XP"))
+        mockMvc.perform(get("/api/v1/publico/rastreio/MOV-SEC-8893-XP"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.cadeiaIntegra").value(true))
                 .andExpect(jsonPath("$.marcos.length()").value(5))
-                .andReturn().getResponse().getContentAsString();
+                .andExpect(jsonPath("$.clienteMascarado").doesNotExist())
+                .andExpect(jsonPath("$.numeroSerie").doesNotExist())
+                .andExpect(jsonPath("$.marcos[0].responsavelNome").doesNotExist())
+                .andExpect(jsonPath("$.marcos[0].latitude").doesNotExist())
+                .andExpect(jsonPath("$.marcos[0].checklistMetadados").doesNotExist())
+                .andExpect(jsonPath("$.marcos[0].evidencias").doesNotExist());
 
-        JsonNode json = objectMapper.readTree(resp);
-        assertThat(json.get("clienteMascarado").asText()).doesNotContain("Oliveira");
+        mockMvc.perform(get("/api/v1/publico/rastreio/MATOS-LOPES-2025-BR-9842"))
+                .andExpect(status().isNotFound());
     }
 
     @Test
@@ -66,7 +70,15 @@ class MovSegApiIntegrationTest {
         mockMvc.perform(get("/api/v1/dashboard/indicadores")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.totalUnidades").value(2));
+                .andExpect(jsonPath("$.totalUnidades").value(2))
+                .andExpect(jsonPath("$.unidadesEntregues").value(0))
+                .andExpect(jsonPath("$.avariasPorCliente[0].total").value(1))
+                .andExpect(jsonPath("$.avariasPorTransportadora[0].chave").value("Expresso Mantiqueira"));
+
+        mockMvc.perform(get("/api/v1/unidades").param("busca", "OP-2025-4410")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(1));
 
         // Busca unidade MOV-SEC-8893-XP
         String timelineJson = mockMvc.perform(get("/api/v1/unidades/codigo/MOV-SEC-8893-XP")
@@ -81,6 +93,9 @@ class MovSegApiIntegrationTest {
                   "etapa": "RECEBIMENTO",
                   "resultado": "APROVADO",
                   "localDescricao": "Destino",
+                  "latitude": -20.123456789,
+                  "longitude": -41.234567890,
+                  "checklistMetadados": {"b": true, "a": {"z": false, "x": 10}},
                   "houveAvaria": false
                 }
                 """;
@@ -89,8 +104,13 @@ class MovSegApiIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(payloadRecebimento))
                 .andExpect(status().isForbidden());
+        mockMvc.perform(post("/api/v1/unidades/" + unidadeId + "/marcos")
+                        .header("Authorization", "Bearer " + entregadorToken)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payloadRecebimento))
+                .andExpect(status().isBadRequest());
 
-        // Entregador registra RECEBIMENTO com foto e vídeo do móvel entregue
+        // A chegada exige evidência e antecede o encerramento da entrega.
         MockMultipartFile dados = new MockMultipartFile(
                 "dados", "", MediaType.APPLICATION_JSON_VALUE,
                 payloadRecebimento.getBytes(StandardCharsets.UTF_8));
@@ -98,8 +118,15 @@ class MovSegApiIntegrationTest {
                 "arquivos", "entrega.jpg", "image/jpeg", "fake-jpeg-bytes".getBytes(StandardCharsets.UTF_8));
         MockMultipartFile video = new MockMultipartFile(
                 "arquivos", "vistoria.mp4", "video/mp4", "fake-mp4-bytes".getBytes(StandardCharsets.UTF_8));
+        MockMultipartFile posEntrega = new MockMultipartFile("dados", "", MediaType.APPLICATION_JSON_VALUE,
+                payloadRecebimento.replace("RECEBIMENTO", "POS_ENTREGA").getBytes(StandardCharsets.UTF_8));
 
         mockMvc.perform(multipart("/api/v1/unidades/" + unidadeId + "/marcos-com-evidencias")
+                        .file(posEntrega).file(foto)
+                        .header("Authorization", "Bearer " + entregadorToken))
+                .andExpect(status().isConflict());
+
+        String registro = mockMvc.perform(multipart("/api/v1/unidades/" + unidadeId + "/marcos-com-evidencias")
                         .file(dados)
                         .file(foto)
                         .file(video)
@@ -108,13 +135,83 @@ class MovSegApiIntegrationTest {
                         .header("Authorization", "Bearer " + entregadorToken))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.etapa").value("RECEBIMENTO"))
-                .andExpect(jsonPath("$.evidencias.length()").value(2));
+                .andExpect(jsonPath("$.evidencias.length()").value(2))
+                .andReturn().getResponse().getContentAsString();
 
-        // Revalida ledger completo após 6 marcos
+        String urlFoto = objectMapper.readTree(registro).get("evidencias").get(0).get("urlConteudo").asText();
+        mockMvc.perform(get(urlFoto)).andExpect(status().is4xxClientError());
+        mockMvc.perform(get(urlFoto).header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(content().bytes(foto.getBytes()));
+
+        mockMvc.perform(get("/api/v1/unidades/" + unidadeId + "/timeline")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.unidade.statusAtual").value("EM_RECEBIMENTO"));
+
+        mockMvc.perform(multipart("/api/v1/unidades/" + unidadeId + "/marcos-com-evidencias")
+                        .file(dados).file(foto)
+                        .header("Authorization", "Bearer " + entregadorToken))
+                .andExpect(status().isConflict());
+
+        mockMvc.perform(multipart("/api/v1/unidades/" + unidadeId + "/marcos-com-evidencias")
+                        .file(posEntrega).file(foto)
+                        .header("Authorization", "Bearer " + entregadorToken))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.etapa").value("POS_ENTREGA"))
+                .andExpect(jsonPath("$.ordemEtapa").value(7));
+
+        // Os blocos novos preservam a verificação dos marcos anteriores.
         mockMvc.perform(post("/api/v1/unidades/" + unidadeId + "/revalidar-ledger")
                         .header("Authorization", "Bearer " + adminToken))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.cadeiaIntegra").value(true))
-                .andExpect(jsonPath("$.totalMarcos").value(6));
+                .andExpect(jsonPath("$.totalMarcos").value(7));
+
+        mockMvc.perform(get("/api/v1/dashboard/indicadores")
+                        .header("Authorization", "Bearer " + adminToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.unidadesEntregues").value(1));
+    }
+
+    @Test
+    @Order(3)
+    void deveEvitarAssociacaoDeOcorrenciaAoMovelErrado() throws Exception {
+        String token = login("admin@movseg.com.br", "MovSeg@2026");
+        String authorization = "Bearer " + token;
+        String original = mockMvc.perform(get("/api/v1/unidades/codigo/MOV-SEC-8893-XP")
+                        .header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString();
+        var timeline = objectMapper.readTree(original);
+        var unidade = timeline.get("unidade");
+
+        String criada = mockMvc.perform(post("/api/v1/unidades")
+                        .header("Authorization", authorization)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "produtoId", unidade.get("produto").get("id").asText(),
+                                "numeroSerie", "TESTE-ITEM-DOIS",
+                                "loteFabricacao", unidade.get("loteFabricacao").asText(),
+                                "ordemProducao", unidade.get("ordemProducao").asText()))))
+                .andExpect(status().isCreated())
+                .andReturn().getResponse().getContentAsString();
+        String novaUnidadeId = objectMapper.readTree(criada).get("id").asText();
+
+        mockMvc.perform(get("/api/v1/unidades/codigo/OP-2025-4410").header("Authorization", authorization))
+                .andExpect(status().isConflict());
+        mockMvc.perform(get("/api/v1/unidades").param("busca", "OP-2025-4410").header("Authorization", authorization))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2));
+
+        mockMvc.perform(post("/api/v1/ocorrencias")
+                        .header("Authorization", authorization)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of(
+                                "unidadeMovelId", novaUnidadeId,
+                                "marcoDeteccaoId", timeline.get("marcos").get(0).get("id").asText(),
+                                "tipoAvaria", "Quina danificada",
+                                "descricaoAvaria", "Registro vinculado ao código incorreto"))))
+                .andExpect(status().isBadRequest());
     }
 }

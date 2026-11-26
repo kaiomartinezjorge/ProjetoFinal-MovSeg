@@ -2,6 +2,7 @@ package br.com.movseg.service;
 
 import br.com.movseg.domain.entity.OcorrenciaAvaria;
 import br.com.movseg.domain.entity.UnidadeMovel;
+import br.com.movseg.domain.enums.EtapaRastreabilidade;
 import br.com.movseg.domain.enums.StatusOcorrencia;
 import br.com.movseg.domain.enums.StatusUnidade;
 import br.com.movseg.domain.repository.EvidenciaMidiaRepository;
@@ -42,8 +43,9 @@ public class DashboardService {
 
         long totalUnidades = unidades.size();
         long avariadas = unidades.stream().filter(u -> u.getStatusAtual() == StatusUnidade.AVARIADO).count();
-        long emTransporte = unidades.stream().filter(u -> u.getStatusAtual() == StatusUnidade.EM_TRANSPORTE).count();
-        long entregues = unidades.stream().filter(u -> u.getStatusAtual() == StatusUnidade.ENTREGUE).count();
+        long emTransporte = unidades.stream().filter(u -> u.getStatusAtual() == StatusUnidade.EM_TRANSPORTE
+                || u.getStatusAtual() == StatusUnidade.EM_RECEBIMENTO).count();
+        long entregues = unidadeRepository.contarEntregas(StatusUnidade.ENTREGUE, EtapaRastreabilidade.POS_ENTREGA);
         long intactas = totalUnidades - avariadas;
 
         long ocAbertas = ocorrencias.stream().filter(o -> o.getStatusChamado() == StatusOcorrencia.ABERTO).count();
@@ -66,6 +68,12 @@ public class DashboardService {
         List<DashboardDtos.ContagemItem> porTipoAvaria = agrupar(
                 ocorrencias.stream().map(OcorrenciaAvaria::getTipoAvaria).toList()
         );
+        List<DashboardDtos.ContagemItem> avariasPorCliente = agrupar(
+                ocorrencias.stream().map(o -> o.getUnidadeMovel().getClienteDestinatario())
+                        .filter(Objects::nonNull).map(String::trim).filter(s -> !s.isEmpty()).toList());
+        List<DashboardDtos.ContagemItem> avariasPorTransportadora = agrupar(
+                ocorrencias.stream().map(o -> o.getUnidadeMovel().getTransportadora())
+                        .map(nome -> nome == null || nome.isBlank() ? "Frota Própria" : nome.trim()).toList());
 
         List<Map<String, Object>> ultimosEventos = marcoRepository.findTop15ByOrderByRegistradoEmDesc()
                 .stream()
@@ -97,6 +105,8 @@ public class DashboardService {
                 porLinha,
                 porTransportadora,
                 porTipoAvaria,
+                avariasPorCliente,
+                avariasPorTransportadora,
                 ultimosEventos
         );
     }
@@ -105,7 +115,7 @@ public class DashboardService {
         return valores.stream()
                 .collect(Collectors.groupingBy(v -> v, Collectors.counting()))
                 .entrySet().stream()
-                .sorted(Map.Entry.<String, Long>comparingByValue().reversed())
+                .sorted(Map.Entry.<String, Long>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
                 .map(e -> new DashboardDtos.ContagemItem(e.getKey(), e.getValue()))
                 .toList();
     }
